@@ -69,6 +69,8 @@ Seven day cards (dinner name, per-serving macros, tags, swap button) plus a week
 
 Generated from the current week. Aggregated + scaled ingredients, pantry staples removed, grouped by store section (produce, meat & fish, dairy, pantry, frozen, other). Items can be ticked off, added, or removed; mobile-friendly layout.
 
+**Staples check:** building the list first shows the staples this week's dinners actually use ("these recipes need: oil, rice, soy sauce, cumin…"); tap any you're running low on and they're added to the list with the week's required quantity. Untapped staples stay excluded.
+
 ### 3. Recipes
 
 Favourites library: add/edit recipes. An **"estimate macros with AI"** helper fills per-serving macros and store sections from the typed ingredient list; user can correct values before saving. Liked AI-generated dinners can be saved as favourites.
@@ -114,6 +116,7 @@ The four person profiles (stats, goal, allergies, dislikes), diet-style rules, *
 | Planning flow | App drafts the week, user adjusts/swaps |
 | Diet rules | Allergies, diet styles, per-person dislikes |
 | Cuisines | Variety mix: household picks preferred cuisines; draft spreads across them, no same-cuisine nights back-to-back |
+| Staple restocking | Staples check at list-build time: app lists the staples this week's dinners use; user taps any that are low to add them |
 | Stack | Next.js + Neon Postgres + AI Gateway (Approach A) |
 | Main layout | Week-at-a-glance grid (Option A, chosen via visual mockups) |
 | Auth | Single shared household password |
