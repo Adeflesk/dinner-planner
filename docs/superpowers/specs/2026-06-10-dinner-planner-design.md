@@ -91,6 +91,13 @@ The four person profiles (stats, goal, allergies, dislikes), diet-style rules, *
 2. **Allergy re-screen:** ingredient names checked against allergy list, else reject.
 3. Rejected recipes are silently regenerated (1 retry per slot); never shown to the user.
 
+## Costs & Limits
+
+- **Model:** default to a Haiku-class model (e.g. `anthropic/claude-haiku-4.5`) via AI Gateway — recipe JSON generation is a simple structured task. Step up to a Sonnet-class model only if suggestion quality disappoints (one-string change).
+- **Expected spend:** ~60 small calls/month ≈ **under $1/month** at list prices; AI Gateway adds zero markup and Vercel's free monthly gateway credits likely cover it entirely.
+- **Guardrails:** set a budget alert and a **hard monthly cap (~$5)** in the Vercel project's AI Gateway settings. The favourites-only fallback (see Error Handling) means a hit cap degrades the app gracefully rather than breaking it.
+- **Auth:** gateway uses Vercel OIDC tokens — no provider API keys to manage.
+
 ## Error Handling
 
 - **AI unavailable/slow:** weekly draft falls back to favourites-only with a visible notice. Timeout + one retry per call. AI failure never blocks planning or shopping-list generation.
