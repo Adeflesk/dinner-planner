@@ -52,7 +52,7 @@ Deterministic, dependency-free functions, unit-tested:
 | **PantryStaple** | ingredient name (always-stocked; excluded from lists) |
 | **ShoppingList** | weekPlanId, items[] (name, qty, unit, section, checked, manual flag) — persisted so manual edits survive regeneration |
 
-Household settings: dinner share %, diet-style rules (e.g. vegetarian-nights-per-week).
+Household settings: dinner share %, diet-style rules (e.g. vegetarian-nights-per-week), preferred cuisines list.
 
 ## Screens
 
@@ -60,8 +60,8 @@ Household settings: dinner share %, diet-style rules (e.g. vegetarian-nights-per
 
 Seven day cards (dinner name, per-serving macros, tags, swap button) plus a weekly macro summary bar (per-macro ✅/⚠️ vs. household dinner targets). Actions:
 
-- **Plan my week:** drafts 7 dinners — roughly half from saved favourites (rotated to avoid last week's repeats), half AI-suggested — all filtered by allergies/dislikes and satisfying diet-style rules, steered toward macro targets. Pinned days survive re-drafts.
-- **Swap (per day):** another favourite / new AI idea / pick manually.
+- **Plan my week:** drafts 7 dinners — roughly half from saved favourites (rotated to avoid last week's repeats), half AI-suggested — all filtered by allergies/dislikes and satisfying diet-style rules, steered toward macro targets. The draft spreads dinners across the household's preferred cuisines (no two same-cuisine nights in a row). Pinned days survive re-drafts.
+- **Swap (per day):** another favourite / new AI idea / another idea in this cuisine / pick manually.
 - **Dinner detail:** ingredients, method, and the portion table ("Adam ×1.5, Beth ×1.25, kids ×0.75").
 - **Build shopping list** button.
 
@@ -75,13 +75,13 @@ Favourites library: add/edit recipes. An **"estimate macros with AI"** helper fi
 
 ### 4. Family
 
-The four person profiles (stats, goal, allergies, dislikes), diet-style rules, dinner-share %, and the pantry staples list.
+The four person profiles (stats, goal, allergies, dislikes), diet-style rules, **preferred cuisines** (e.g. Indian, Mexican, Italian — drives the weekly variety mix), dinner-share %, and the pantry staples list.
 
 ## AI Integration Details
 
 - Model access via AI Gateway `"provider/model"` string; no provider SDK lock-in.
 - `generateObject` with a Recipe Zod schema for: weekly draft suggestions, single-day swap suggestions, and macro estimation for user-entered recipes.
-- Prompt inputs: macro targets, allergies (hard), dislikes (hard), diet-style rules, recent recipe names (for variety), cuisine tags of favourites (for taste fit).
+- Prompt inputs: macro targets, allergies (hard), dislikes (hard), diet-style rules, the household's preferred cuisine list (with the cuisine requested per slot for variety), recent recipe names (to avoid repeats), cuisine tags of favourites (for taste fit).
 
 ### Validation of AI output (in code, after schema validation)
 
@@ -113,6 +113,7 @@ The four person profiles (stats, goal, allergies, dislikes), diet-style rules, d
 | Platform | Web app (Next.js on Vercel) |
 | Planning flow | App drafts the week, user adjusts/swaps |
 | Diet rules | Allergies, diet styles, per-person dislikes |
+| Cuisines | Variety mix: household picks preferred cuisines; draft spreads across them, no same-cuisine nights back-to-back |
 | Stack | Next.js + Neon Postgres + AI Gateway (Approach A) |
 | Main layout | Week-at-a-glance grid (Option A, chosen via visual mockups) |
 | Auth | Single shared household password |
