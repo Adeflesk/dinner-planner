@@ -36,7 +36,7 @@ Single **Next.js (App Router)** app deployed on **Vercel**.
 
 Deterministic, dependency-free functions, unit-tested:
 
-- **Daily targets per person:** Mifflin-St Jeor BMR × activity multiplier, adjusted for goal (lose/maintain/gain), with standard macro splits.
+- **Daily targets per person:** Mifflin-St Jeor BMR × activity multiplier, adjusted for goal (lose −15% / maintain / gain +10% calories). Macro split: protein 1.8 g per kg bodyweight, fat 25% of calories, remaining calories as carbs.
 - **Dinner share:** default **35%** of daily calories (household-adjustable) → per-person dinner macro targets.
 - **Portion solver:** given a recipe's per-serving macros and each person's dinner targets, compute per-person serving multipliers (e.g. 1.5 / 1.25 / 0.75 / 0.75) and the total household scale factor.
 - **Weekly tally:** sum planned dinners vs. combined household dinner targets; per-macro ✅/⚠️ status.
@@ -45,7 +45,7 @@ Deterministic, dependency-free functions, unit-tested:
 ## Data Model
 
 | Table | Fields (essence) |
-|---|---|
+| --- | --- |
 | **Person** | name, age, sex, weight, height, activity level, goal, allergies[], dislikes[] |
 | **Recipe** | name, method, servings, per-serving macros (kcal/P/C/F), tags[] (diet style, cuisine), source (`family` \| `ai`), ingredients[] (name, qty, unit, store section) |
 | **WeekPlan** | week start date; 7 × **PlannedDinner** (day, recipeId, household scale, per-person portion multipliers, pinned flag) |
@@ -105,7 +105,7 @@ The four person profiles (stats, goal, allergies, dislikes), diet-style rules, d
 ## Decisions Log
 
 | Decision | Choice |
-|---|---|
+| --- | --- |
 | Recipe source | Mix: household favourites + AI suggestions |
 | Macro targets | App-calculated from per-person profiles |
 | Portions | Same meal, per-person portion guidance |
