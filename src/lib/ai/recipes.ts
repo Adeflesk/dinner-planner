@@ -22,6 +22,7 @@ function buildPrompt(req: RecipeRequest): string {
   return [
     `Create one family dinner recipe (4 base servings) in ${req.cuisine} cuisine.`,
     `Per-serving macro targets: ~${Math.round(t.kcal)} kcal, ${Math.round(t.protein)}g protein, ${Math.round(t.carbs)}g carbs, ${Math.round(t.fat)}g fat.`,
+    // We ask for 10% so typical drift still lands inside energyConsistent's 15% gate.
     `kcal must equal 4*protein + 4*carbs + 9*fat within 10%.`,
     req.allergies.length ? `NEVER include these allergens: ${req.allergies.join(', ')}.` : '',
     req.dislikes.length ? `Do not use: ${req.dislikes.join(', ')}.` : '',
@@ -67,7 +68,8 @@ export const aiEstimator: Estimator = async (input) => {
     schema: macroEstimateSchema,
     prompt: [
       `Estimate per-serving macros for "${input.name}" (${input.servings} servings) and structure its ingredients.`,
-      `kcal must equal 4*protein + 4*carbs + 9*fat within 10%.`,
+      // We ask for 10% so typical drift still lands inside energyConsistent's 15% gate.
+    `kcal must equal 4*protein + 4*carbs + 9*fat within 10%.`,
       `Assign each ingredient a realistic supermarket section.`,
       `Ingredients (one per line, may include quantities):`,
       input.ingredientLines,
