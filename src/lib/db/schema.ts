@@ -1,5 +1,5 @@
 import {
-  boolean, date, integer, jsonb, pgTable, real, text, timestamp, uuid,
+  boolean, date, integer, jsonb, pgTable, real, text, timestamp, uniqueIndex, uuid,
 } from 'drizzle-orm/pg-core';
 import type { Ingredient, MacroSet } from '@/lib/macro/types';
 import type { Portion } from '@/lib/macro/portions';
@@ -44,7 +44,9 @@ export const plannedDinners = pgTable('planned_dinners', {
   householdServings: real('household_servings').notNull(),
   portions: jsonb('portions').$type<Portion[]>().notNull(),
   pinned: boolean('pinned').notNull().default(false),
-});
+}, (t) => ({
+  dayPerWeekIdx: uniqueIndex('planned_dinners_week_plan_id_day_idx').on(t.weekPlanId, t.day),
+}));
 
 export const pantryStaples = pgTable('pantry_staples', {
   id: uuid('id').primaryKey().defaultRandom(),

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "planned_dinners_week_plan_id_day_idx" ON "planned_dinners" USING btree ("week_plan_id","day");
