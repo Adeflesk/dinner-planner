@@ -12,10 +12,14 @@ export async function planMyWeek() {
   if (aiDegraded) redirect('/?degraded=1');
 }
 
+const SWAP_MODES = ['favourite', 'ai', 'ai-same-cuisine'] as const;
+type SwapMode = typeof SWAP_MODES[number];
+
 export async function swapDayAction(formData: FormData) {
   const day = Number(formData.get('day'));
-  const mode = String(formData.get('mode')) as 'favourite' | 'ai' | 'ai-same-cuisine';
-  await swapDay(getDb(), currentWeekStart(), day, mode);
+  const raw = String(formData.get('mode'));
+  if (!SWAP_MODES.includes(raw as SwapMode)) return;
+  await swapDay(getDb(), currentWeekStart(), day, raw as SwapMode);
   revalidatePath('/');
 }
 

@@ -41,8 +41,12 @@ export async function buildList(db: Db, weekStart: string, lowStapleNames: strin
   const [existing] = await db.select().from(shoppingLists).where(eq(shoppingLists.weekPlanId, plan.id));
   if (existing) items.push(...existing.items.filter((i) => i.manual));
 
-  await db.delete(shoppingLists).where(eq(shoppingLists.weekPlanId, plan.id));
-  const [list] = await db.insert(shoppingLists).values({ weekPlanId: plan.id, items }).returning();
+  // Atomic upsert: single statement, no delete-then-insert window.
+  // weekPlanId has a unique constraint so ON CONFLICT targets it.
+  const [list] = await db.insert(shoppingLists)
+    .values({ weekPlanId: plan.id, items })
+    .onConflictDoUpdate({ target: shoppingLists.weekPlanId, set: { items } })
+    .returning();
   return list;
 }
 

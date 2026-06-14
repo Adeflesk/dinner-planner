@@ -1,6 +1,7 @@
 export const SESSION_COOKIE = 'dp_session';
 
 export async function sessionToken(): Promise<string> {
+  if (!process.env.AUTH_SECRET) throw new Error('AUTH_SECRET env var is not set');
   const data = new TextEncoder().encode(`dinner-planner:${process.env.AUTH_SECRET}`);
   const digest = await crypto.subtle.digest('SHA-256', data);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');

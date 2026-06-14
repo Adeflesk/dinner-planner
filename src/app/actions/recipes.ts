@@ -45,7 +45,13 @@ export async function saveRecipe(formData: FormData) {
 }
 
 export async function deleteRecipe(formData: FormData) {
-  await getDb().delete(recipes).where(eq(recipes.id, String(formData.get('id'))));
+  const db = getDb();
+  const id = String(formData.get('id'));
+  // Guard: refuse to delete a recipe that is currently planned (FK constraint)
+  const { plannedDinners } = await import('@/lib/db/schema');
+  const [inUse] = await db.select().from(plannedDinners).where(eq(plannedDinners.recipeId, id)).limit(1);
+  if (inUse) return; // silently skip — UI can surface this if needed
+  await db.delete(recipes).where(eq(recipes.id, id));
   revalidatePath('/recipes');
 }
 
