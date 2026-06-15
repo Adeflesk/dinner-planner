@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '@/lib/db';
 import {
   people, plannedDinners, recipes, settings, shoppingLists, weekPlans,
@@ -11,17 +11,20 @@ import { generateRecipe, aiGenerator, type Generator } from '@/lib/ai/recipes';
 import type { MacroSet } from '@/lib/macro/types';
 
 export async function getSettings(db: Db) {
+  // Race-safe: insert-if-absent then read, so concurrent renders can't collide
+  // on the singleton row's primary key.
+  await db.insert(settings).values({ id: 1 }).onConflictDoNothing();
   const [row] = await db.select().from(settings).where(eq(settings.id, 1));
-  if (row) return row;
-  const [created] = await db.insert(settings).values({ id: 1 }).returning();
-  return created;
+  return row;
 }
 
 export async function getOrCreateWeekPlan(db: Db, weekStart: string) {
-  const [existing] = await db.select().from(weekPlans).where(eq(weekPlans.weekStart, weekStart));
-  if (existing) return existing;
-  const [created] = await db.insert(weekPlans).values({ weekStart }).returning();
-  return created;
+  // Race-safe: a plain select-then-insert lets two concurrent first-loads of a
+  // new week both pass the select and then collide on the weekStart unique
+  // constraint. onConflictDoNothing makes the insert idempotent.
+  await db.insert(weekPlans).values({ weekStart }).onConflictDoNothing();
+  const [row] = await db.select().from(weekPlans).where(eq(weekPlans.weekStart, weekStart));
+  return row;
 }
 
 async function loadContext(db: Db) {
@@ -43,6 +46,21 @@ async function loadContext(db: Db) {
       }
     : { kcal: 650, protein: 35, carbs: 65, fat: 22 };
   return { household, config, favourites, allergies, dislikes, targets, avgTarget };
+}
+
+/**
+ * Delete AI-generated recipes that no longer back any planned dinner. AI recipes
+ * are created per-plan; re-planning and day swaps strand the old rows, so without
+ * this the recipes table (and the Recipes page's "AI-suggested" list) grows
+ * unbounded. Promoted recipes are safe — promotion flips source to 'family'.
+ */
+async function pruneOrphanAiRecipes(db: Db) {
+  const aiRecipes = await db.select({ id: recipes.id }).from(recipes).where(eq(recipes.source, 'ai'));
+  const referenced = new Set(
+    (await db.select({ recipeId: plannedDinners.recipeId }).from(plannedDinners)).map((r) => r.recipeId),
+  );
+  const orphans = aiRecipes.filter((r) => !referenced.has(r.id)).map((r) => r.id);
+  if (orphans.length) await db.delete(recipes).where(inArray(recipes.id, orphans));
 }
 
 async function persistDinner(
@@ -111,6 +129,7 @@ export async function planWeek(
     if (pinned.has(dinner.day)) continue; // already persisted
     await persistDinner(db, plan.id, dinner, ctx.targets);
   }
+  await pruneOrphanAiRecipes(db);
   // a re-plan invalidates any existing list
   await db.delete(shoppingLists).where(eq(shoppingLists.weekPlanId, plan.id));
   return { aiDegraded: aiFailed };
@@ -163,6 +182,7 @@ export async function swapDay(
     and(eq(plannedDinners.weekPlanId, plan.id), eq(plannedDinners.day, day)),
   );
   await persistDinner(db, plan.id, replacement, ctx.targets);
+  await pruneOrphanAiRecipes(db);
   await db.delete(shoppingLists).where(eq(shoppingLists.weekPlanId, plan.id));
   return { ok: true };
 }

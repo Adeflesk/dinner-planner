@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import * as schema from '@/lib/db/schema';
 import type { Db } from '@/lib/db';
-import { getWeek, planWeek, swapDay, togglePin } from '@/lib/services/planning';
+import { getOrCreateWeekPlan, getWeek, planWeek, swapDay, togglePin } from '@/lib/services/planning';
 import { addItem, buildList, getList, staplesCheck, toggleItem } from '@/lib/services/shopping';
 import type { AiRecipe } from '@/lib/ai/schema';
 
@@ -101,5 +102,34 @@ describe('plan → swap → shopping list flow', () => {
     await addItem(db, list!.id, 'birthday candles');
     const rebuilt = await buildList(db, WEEK, []);
     expect(rebuilt!.items.map((i) => i.name)).toContain('birthday candles');
+  });
+
+  it('does not leave orphaned AI recipes after re-planning', async () => {
+    await planWeek(db, WEEK, fakeAi);
+    await planWeek(db, WEEK, fakeAi); // re-plan: previous AI recipes are now unreferenced
+
+    const aiRecipes = await db.select().from(schema.recipes).where(eq(schema.recipes.source, 'ai'));
+    const planned = await db.select().from(schema.plannedDinners);
+    const referencedIds = new Set(planned.map((p) => p.recipeId));
+    // every surviving AI recipe must still be referenced by a planned dinner
+    for (const r of aiRecipes) expect(referencedIds.has(r.id)).toBe(true);
+  });
+
+  it('keeps pinned AI recipes when pruning orphans', async () => {
+    await planWeek(db, WEEK, fakeAi);
+    const aiDay = (await getWeek(db, WEEK)).dinners.find((d) => d.recipe.source === 'ai')!;
+    await togglePin(db, WEEK, aiDay.day);
+    await planWeek(db, WEEK, fakeAi);
+
+    const stillThere = await db.select().from(schema.recipes).where(eq(schema.recipes.id, aiDay.recipe.id));
+    expect(stillThere).toHaveLength(1); // pinned AI recipe survived the prune
+  });
+
+  it('getOrCreateWeekPlan is idempotent under concurrent calls', async () => {
+    const [a, b] = await Promise.all([
+      getOrCreateWeekPlan(db, '2026-07-06'),
+      getOrCreateWeekPlan(db, '2026-07-06'),
+    ]);
+    expect(a.id).toBe(b.id);
   });
 });
