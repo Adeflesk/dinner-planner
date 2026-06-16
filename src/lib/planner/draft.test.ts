@@ -87,4 +87,22 @@ describe('draftWeek', () => {
     });
     expect(days.filter((d) => d.recipe.tags.includes('vegetarian'))).toHaveLength(2);
   });
+
+  it('generates AI dinners concurrently, not one-at-a-time', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const slow = async (req: { cuisine: string }) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((r) => setTimeout(r, 10));
+      active--;
+      return aiRecipe(`AI ${req.cuisine} ${Math.random()}`, req.cuisine);
+    };
+    await draftWeek({
+      favourites: [], cuisines: ['indian', 'italian'], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0, generate: slow,
+    });
+    // All 7 days need AI (no favourites); concurrent generation means >1 in flight at once.
+    expect(maxActive).toBeGreaterThan(1);
+  });
 });

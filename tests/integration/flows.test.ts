@@ -66,6 +66,19 @@ describe('plan → swap → shopping list flow', () => {
     expect(week.dinners.length).toBeGreaterThanOrEqual(1); // only 1 favourite seeded
   });
 
+  it('does NOT report degraded when AI only partially fails', async () => {
+    // Two cuisines force an alternating sequence, so both appear. Fail one cuisine,
+    // succeed the other → some AI dinners land. The week is not "favourites only".
+    const partial = async (req: { cuisine: string }) => {
+      if (req.cuisine === 'italian') throw new Error('timeout');
+      return fakeAi(req);
+    };
+    const { aiDegraded } = await planWeek(db, WEEK, partial);
+    expect(aiDegraded).toBe(false);
+    const week = await getWeek(db, WEEK);
+    expect(week.dinners.some((d) => d.recipe.source === 'ai')).toBe(true);
+  });
+
   it('swaps a day and pins survive re-planning', async () => {
     await planWeek(db, WEEK, fakeAi);
     const before = (await getWeek(db, WEEK)).dinners.find((d) => d.day === 2)!;

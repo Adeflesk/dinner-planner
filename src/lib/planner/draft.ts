@@ -58,37 +58,58 @@ export async function draftWeek(opts: {
   for (const p of opts.pinned.values()) used.add(p.recipe.name.toLowerCase());
 
   let vegRemaining = opts.vegetarianNights;
-  const result: DraftDinner[] = [];
+  const result: (DraftDinner | null)[] = new Array(7).fill(null);
+  const aiSlots: { day: number; cuisine: string; dietTags: string[] }[] = [];
 
+  // Phase 1 (no I/O): place pinned and favourite dinners, collect the days needing AI.
   for (let day = 0; day < 7; day++) {
     const pinnedDinner = opts.pinned.get(day);
-    if (pinnedDinner) { result.push(pinnedDinner); continue; }
+    if (pinnedDinner) { result[day] = pinnedDinner; continue; }
 
     const cuisine = seq[day];
     const dietTags = vegRemaining > 0 ? ['vegetarian'] : [];
     const wantFavourite = day % 2 === 0; // ~half favourites, half AI
     const favMatch = pickFavourite(opts.favourites, cuisine, used, dietTags);
 
-    let dinner: DraftDinner | null = null;
     if (wantFavourite && favMatch) {
-      dinner = { day, source: 'favourite', recipeId: favMatch.id, recipe: favMatch };
+      result[day] = { day, source: 'favourite', recipeId: favMatch.id, recipe: favMatch };
+      used.add(favMatch.name.toLowerCase());
+      if (dietTags.length) vegRemaining--; // favMatch is veg (pickFavourite filtered on it)
     } else {
-      const ai = await opts.generate({ cuisine, dietTags, avoidNames: [...used] });
-      if (ai && !used.has(ai.name.toLowerCase())) dinner = { day, source: 'ai', recipe: ai };
-      else if (favMatch) dinner = { day, source: 'favourite', recipeId: favMatch.id, recipe: favMatch };
+      aiSlots.push({ day, cuisine, dietTags });
+      if (dietTags.length) vegRemaining--; // reserve this night as vegetarian
     }
-    if (!dinner) {
-      // last resort: any unused favourite regardless of cuisine/diet
-      const any = pickFavourite(opts.favourites, null, used, []);
-      if (any) dinner = { day, source: 'favourite', recipeId: any.id, recipe: any };
+  }
+
+  // Phase 2: generate every AI dinner concurrently. This is the only slow part —
+  // running the calls in parallel turns ~N×latency into ~1×latency.
+  const aiResults = await Promise.all(
+    aiSlots.map((slot) =>
+      opts.generate({ cuisine: slot.cuisine, dietTags: slot.dietTags, avoidNames: [...used] }),
+    ),
+  );
+
+  // Phase 3 (no I/O): assemble in day order, de-duplicating names (parallel calls can't
+  // see each other) and falling back to an unused favourite when AI failed or collided.
+  for (let i = 0; i < aiSlots.length; i++) {
+    const slot = aiSlots[i];
+    const ai = aiResults[i];
+    let dinner: DraftDinner | null = null;
+    if (ai && !used.has(ai.name.toLowerCase())) {
+      dinner = { day: slot.day, source: 'ai', recipe: ai };
+    } else {
+      const fav =
+        pickFavourite(opts.favourites, slot.cuisine, used, slot.dietTags) ??
+        pickFavourite(opts.favourites, null, used, []); // last resort: any unused favourite
+      if (fav) dinner = { day: slot.day, source: 'favourite', recipeId: fav.id, recipe: fav };
     }
     if (dinner) {
       used.add(dinner.recipe.name.toLowerCase());
-      if (dietTags.length && dinner.recipe.tags.includes('vegetarian')) vegRemaining--;
-      result.push(dinner);
+      result[slot.day] = dinner;
     }
-    // If still null (no favourites at all + AI down), the day is simply skipped;
-    // the UI shows an empty slot and the user can retry.
+    // Still null (no favourites left + AI unavailable) → day stays empty; the UI shows
+    // an empty slot and the user can retry.
   }
-  return result;
+
+  return result.filter((d): d is DraftDinner => d !== null);
 }

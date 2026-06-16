@@ -105,8 +105,13 @@ export async function planWeek(
     .where(eq(recipes.source, 'ai'))
     .orderBy(desc(recipes.createdAt))
     .limit(20);
-  let aiFailed = false;
+  // "Degraded" means AI was asked for dinners and produced none — i.e. genuinely
+  // favourites-only. A partial failure (some slots succeed) is NOT degraded; the
+  // banner must not claim "favourites only" when most of the week is AI-generated.
+  let aiRequested = 0;
+  let aiSucceeded = 0;
   const generate = async (req: DraftGenerateRequest) => {
+    aiRequested++;
     const result = await generateRecipe(
       {
         cuisine: req.cuisine, targetPerServing: ctx.avgTarget,
@@ -115,7 +120,7 @@ export async function planWeek(
       },
       gen,
     );
-    if (result === null) aiFailed = true;
+    if (result !== null) aiSucceeded++;
     return result;
   };
 
@@ -132,7 +137,7 @@ export async function planWeek(
   await pruneOrphanAiRecipes(db);
   // a re-plan invalidates any existing list
   await db.delete(shoppingLists).where(eq(shoppingLists.weekPlanId, plan.id));
-  return { aiDegraded: aiFailed };
+  return { aiDegraded: aiRequested > 0 && aiSucceeded === 0 };
 }
 
 /** Replace one day. mode: 'favourite' | 'ai' | 'ai-same-cuisine', or pass an explicit recipeId. */
