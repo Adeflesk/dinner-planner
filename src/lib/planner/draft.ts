@@ -81,34 +81,43 @@ export async function draftWeek(opts: {
     }
   }
 
-  // Phase 2: generate every AI dinner concurrently. This is the only slow part —
-  // running the calls in parallel turns ~N×latency into ~1×latency.
-  const aiResults = await Promise.all(
-    aiSlots.map((slot) =>
-      opts.generate({ cuisine: slot.cuisine, dietTags: slot.dietTags, avoidNames: [...used] }),
-    ),
-  );
+  // Phase 2: generate AI dinners concurrently (the only slow part — parallel calls turn
+  // ~N×latency into ~1×latency). Retry slots that came back empty (null or name-collision),
+  // but stop the moment a whole round makes no progress — that means AI is down, and
+  // retrying would just burn another round of timeouts.
+  let pending = aiSlots;
+  for (let round = 0; round < 2 && pending.length > 0; round++) {
+    const before = pending.length;
+    const results = await Promise.all(
+      pending.map((slot) =>
+        opts.generate({ cuisine: slot.cuisine, dietTags: slot.dietTags, avoidNames: [...used] }),
+      ),
+    );
+    const stillPending: typeof pending = [];
+    for (let i = 0; i < pending.length; i++) {
+      const slot = pending[i];
+      const ai = results[i];
+      if (ai && !used.has(ai.name.toLowerCase())) {
+        used.add(ai.name.toLowerCase());
+        result[slot.day] = { day: slot.day, source: 'ai', recipe: ai };
+      } else {
+        stillPending.push(slot);
+      }
+    }
+    pending = stillPending;
+    if (pending.length === before) break; // no progress → AI unavailable, don't retry
+  }
 
-  // Phase 3 (no I/O): assemble in day order, de-duplicating names (parallel calls can't
-  // see each other) and falling back to an unused favourite when AI failed or collided.
-  for (let i = 0; i < aiSlots.length; i++) {
-    const slot = aiSlots[i];
-    const ai = aiResults[i];
-    let dinner: DraftDinner | null = null;
-    if (ai && !used.has(ai.name.toLowerCase())) {
-      dinner = { day: slot.day, source: 'ai', recipe: ai };
-    } else {
-      const fav =
-        pickFavourite(opts.favourites, slot.cuisine, used, slot.dietTags) ??
-        pickFavourite(opts.favourites, null, used, []); // last resort: any unused favourite
-      if (fav) dinner = { day: slot.day, source: 'favourite', recipeId: fav.id, recipe: fav };
+  // Phase 3 (no I/O): fill any day AI never managed with an unused favourite. A day with
+  // no AI result and no spare favourite stays empty — the UI shows a gap and a swap button.
+  for (const slot of pending) {
+    const fav =
+      pickFavourite(opts.favourites, slot.cuisine, used, slot.dietTags) ??
+      pickFavourite(opts.favourites, null, used, []);
+    if (fav) {
+      used.add(fav.name.toLowerCase());
+      result[slot.day] = { day: slot.day, source: 'favourite', recipeId: fav.id, recipe: fav };
     }
-    if (dinner) {
-      used.add(dinner.recipe.name.toLowerCase());
-      result[slot.day] = dinner;
-    }
-    // Still null (no favourites left + AI unavailable) → day stays empty; the UI shows
-    // an empty slot and the user can retry.
   }
 
   return result.filter((d): d is DraftDinner => d !== null);

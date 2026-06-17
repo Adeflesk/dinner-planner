@@ -88,6 +88,32 @@ describe('draftWeek', () => {
     expect(days.filter((d) => d.recipe.tags.includes('vegetarian'))).toHaveLength(2);
   });
 
+  it('retries slots AI failed to fill (flaky AI), so the week is not left full of gaps', async () => {
+    let calls = 0;
+    // First 3 generate calls return null; everything after succeeds. With a retry
+    // round, the 3 initially-empty days get filled on the second pass.
+    const flaky = async (req: { cuisine: string }) => {
+      calls++;
+      return calls <= 3 ? null : aiRecipe(`AI ${req.cuisine} ${Math.random()}`, req.cuisine);
+    };
+    const days = await draftWeek({
+      favourites: [], cuisines: ['indian', 'italian'], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0, generate: flaky,
+    });
+    expect(days).toHaveLength(7); // all days filled despite 3 first-round failures
+  });
+
+  it('does not retry endlessly when AI is fully down', async () => {
+    let calls = 0;
+    await draftWeek({
+      favourites: [], cuisines: ['indian', 'italian'], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0,
+      generate: async () => { calls++; return null; },
+    });
+    // 7 AI slots, one round only (a fully-failed round stops further rounds).
+    expect(calls).toBe(7);
+  });
+
   it('generates AI dinners concurrently, not one-at-a-time', async () => {
     let active = 0;
     let maxActive = 0;

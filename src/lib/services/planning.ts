@@ -213,6 +213,8 @@ export async function getWeek(db: Db, weekStart: string) {
     }),
   );
   const nightly = dinners.map((d) => scale(d.recipe.perServing, d.householdServings));
-  const tally = weeklyTally(nightly, weeklyTargetFor(ctx.targets.map((t) => t.target), 7));
+  // Compare against the target for the number of nights actually planned, not a fixed 7 —
+  // otherwise a partially-filled week always reads "under".
+  const tally = weeklyTally(nightly, weeklyTargetFor(ctx.targets.map((t) => t.target), dinners.length));
   return { plan, dinners, tally, people: ctx.household, settings: ctx.config };
 }

@@ -6,6 +6,13 @@ import { aiRecipeSchema, macroEstimateSchema, type AiRecipe, type MacroEstimate 
 const MODEL = () => process.env.AI_MODEL ?? 'anthropic/claude-haiku-4.5';
 const TIMEOUT_MS = 20_000;
 
+// Steer ingredient names/units toward a canonical form so the shopping-list aggregator
+// can actually merge duplicates across recipes (see aggregate.ts UNIT_CANON).
+const UNIT_GUIDANCE =
+  'For each ingredient use a simple, singular, lowercase name with no brand or descriptor ' +
+  'words (e.g. "onion" not "1 medium yellow onion", "chicken breast" not "boneless skinless ' +
+  'chicken breasts"). Use only these units: g, kg, ml, l, tbsp, tsp, cup, pcs, clove, can, slice.';
+
 export type RecipeRequest = {
   cuisine: string;
   targetPerServing: MacroSet;
@@ -29,6 +36,7 @@ function buildPrompt(req: RecipeRequest): string {
     req.dietTags.length ? `The recipe must be: ${req.dietTags.join(', ')}.` : '',
     req.avoidNames.length ? `Do not suggest any of these recent dinners: ${req.avoidNames.join(', ')}.` : '',
     `Assign each ingredient a realistic supermarket section.`,
+    UNIT_GUIDANCE,
   ].filter(Boolean).join('\n');
 }
 
@@ -71,6 +79,7 @@ export const aiEstimator: Estimator = async (input) => {
       // We ask for 10% so typical drift still lands inside energyConsistent's 15% gate.
     `kcal must equal 4*protein + 4*carbs + 9*fat within 10%.`,
       `Assign each ingredient a realistic supermarket section.`,
+      UNIT_GUIDANCE,
       `Ingredients (one per line, may include quantities):`,
       input.ingredientLines,
     ].join('\n'),

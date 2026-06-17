@@ -117,6 +117,20 @@ describe('plan → swap → shopping list flow', () => {
     expect(rebuilt!.items.map((i) => i.name)).toContain('birthday candles');
   });
 
+  it('scales the weekly macro target to the number of planned dinners', async () => {
+    await planWeek(db, WEEK, fakeAi); // 7 dinners, each ~on per-night target
+    const plan = await getOrCreateWeekPlan(db, WEEK);
+    const rows = await db.select().from(schema.plannedDinners).where(eq(schema.plannedDinners.weekPlanId, plan.id));
+    // Remove 3 days, leaving a 4-dinner week.
+    for (const r of rows.slice(0, 3)) {
+      await db.delete(schema.plannedDinners).where(eq(schema.plannedDinners.id, r.id));
+    }
+    const week = await getWeek(db, WEEK);
+    expect(week.dinners).toHaveLength(4);
+    // Target must reflect 4 nights — a per-night-on-target week reads 'ok', not 'under'.
+    expect(week.tally.status.kcal).toBe('ok');
+  });
+
   it('does not leave orphaned AI recipes after re-planning', async () => {
     await planWeek(db, WEEK, fakeAi);
     await planWeek(db, WEEK, fakeAi); // re-plan: previous AI recipes are now unreferenced

@@ -24,6 +24,23 @@ describe('aggregateIngredients', () => {
     );
     expect(items).toHaveLength(2);
   });
+  it('canonicalizes unit synonyms so tbsp and tablespoon merge', () => {
+    const items = aggregateIngredients(
+      [
+        { ingredients: [ing('olive oil', 2, 'tbsp', 'pantry')], scale: 1 },
+        { ingredients: [ing('olive oil', 1, 'tablespoon', 'pantry')], scale: 1 },
+        { ingredients: [ing('onion', 2, 'pieces', 'produce')], scale: 1 },
+        { ingredients: [ing('onion', 1, 'pcs', 'produce')], scale: 1 },
+      ],
+      [],
+    );
+    const oil = items.find((i) => i.name === 'olive oil')!;
+    const onion = items.find((i) => i.name === 'onion')!;
+    expect(oil.quantity).toBe(3);
+    expect(oil.unit).toBe('tbsp');
+    expect(onion.quantity).toBe(3);
+    expect(onion.unit).toBe('pcs');
+  });
   it('filters pantry staples case-insensitively', () => {
     const items = aggregateIngredients(
       [{ ingredients: [ing('Olive Oil', 2, 'tbsp', 'pantry'), ing('chicken', 500, 'g', 'meat_fish')], scale: 1 }],
