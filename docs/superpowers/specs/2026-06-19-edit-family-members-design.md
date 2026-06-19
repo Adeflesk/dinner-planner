@@ -23,7 +23,7 @@ else await db.insert(people).values(values);
 revalidatePath('/family');
 ```
 
-When a hidden `id` field is present it issues an `UPDATE`; otherwise an `INSERT`. **No server-action or schema changes are required.** The work is purely surfacing an edit affordance in the UI that posts the person's `id` plus current values.
+When a hidden `id` field is present it issues an `UPDATE`; otherwise an `INSERT`. The insert/update **behaviour** is correct; no schema change is required. However, this logic lives directly in the action (`getDb()` called inline), which both diverges from the project's documented architecture (*"Services take a `Db` parameter… so the same code runs against Neon in prod and PGlite in tests"*) and leaves the update path untested. Best practices for this change therefore include extracting that logic into a testable service (see §3) so the edit path is covered by a real integration test.
 
 ## Person fields (for pre-fill)
 
@@ -73,11 +73,34 @@ allergies: peanuts
 - On submit, `savePerson` calls `revalidatePath('/family')` (already present); the page re-renders with updated values and the `<details>` returns to collapsed (fresh server render).
 - The existing `remove` form and the read-only macro summary stay exactly as they are.
 
+### 3. Extract a testable person service
+
+To align with the project's layering (*services take a `Db`; actions are thin wrappers*) and to make the edit path verifiable, move the upsert logic out of the action into a service:
+
+`src/lib/services/people.ts`
+
+```ts
+export type PersonInput = {
+  name: string; age: number; sex: 'male' | 'female';
+  weightKg: number; heightCm: number;
+  activity: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
+  goal: 'lose' | 'maintain' | 'gain';
+  allergies: string[]; dislikes: string[];
+};
+
+// id present → UPDATE that row; id absent → INSERT.
+export async function upsertPerson(db: Db, input: PersonInput, id?: string): Promise<void> { … }
+export async function deletePersonById(db: Db, id: string): Promise<void> { … }
+```
+
+`savePerson`/`deletePerson` in `actions/family.ts` become thin: parse `FormData` (keeping the existing `list()` helper and numeric coercion), call the service with `getDb()`, then `revalidatePath('/family')`. Behaviour is identical to today; the logic is now injectable and unit-testable against PGlite.
+
 ### Data flow
 
 ```
 [Edit ▾]  →  expand <details>  →  pre-filled PersonForm (action=savePerson, hidden id)
-   →  submit  →  savePerson(): UPDATE people SET ... WHERE id = ?  →  revalidatePath('/family')
+   →  submit  →  savePerson() parses FormData
+   →  upsertPerson(db, input, id): UPDATE people SET ... WHERE id = ?  →  revalidatePath('/family')
    →  list re-renders with new values, card collapsed
 ```
 
@@ -89,18 +112,26 @@ allergies: peanuts
 
 ## Testing & verification
 
-The new code is **presentational**: a shared form component and a `<details>` block. There is no new business logic — the insert-vs-update branch in `savePerson` already exists and is unchanged.
+The repository currently has **no DB integration-test harness** — all existing tests are pure-logic unit tests (macro engine, ingredient parsing, dates, draft sequencing). This change introduces the first one, since CLAUDE.md already mandates the pattern (*services run against PGlite in tests*) and the `Db` type was built for exactly this.
 
-The repository currently has **no DB/action integration-test harness** (all existing tests are pure-logic unit tests: macro engine, ingredient parsing, dates, draft sequencing), and `savePerson` calls `getDb()` directly rather than taking an injectable `Db`. Standing up a PGlite harness and refactoring the action to be injectable purely to test a pre-existing one-line branch is out of scope for this UI change and is noted as separately trackable.
+**Test harness** (`src/lib/test/db.ts` or similar): a small helper that spins up an in-memory PGlite instance, applies the Drizzle schema/migrations, and returns a `Db`. This is reusable by future service tests, not just this one.
 
-Best-practice verification for this change:
+**`people.test.ts`** (integration, PGlite) covering the service:
 
-1. `npm test` — full suite stays green (no regressions).
-2. `npm run build && npx tsc --noEmit` — clean, including the new `PersonForm` prop types.
-3. Manual run (`npm run dev`): edit a person (e.g. change weight + goal), submit, confirm the card reflects new values and the macro line recalculates; confirm "Add person" still inserts a new person; confirm "remove" still works.
+1. `upsertPerson(db, input)` with no `id` → inserts a new row with the given values.
+2. `upsertPerson(db, input, existingId)` → updates that row in place (changed fields persist, `id` unchanged, no extra row created) — the edit path this feature adds.
+3. `deletePersonById(db, id)` → removes the row.
+4. Array fields (`allergies`/`dislikes`) round-trip correctly through `jsonb`.
+
+The `PersonForm` component and `<details>` block remain presentational (no unit test); they are covered by manual verification.
+
+**Full verification:**
+
+1. `npm run db:generate` (if migrations are needed for the harness) then `npm test` — full suite green, including the new `people.test.ts`.
+2. `npm run build && npx tsc --noEmit` — clean, including the new `PersonForm` prop types and service signatures.
+3. Manual run (`npm run dev`): edit a person (e.g. change weight + goal), submit, confirm the card reflects new values and the macro line recalculates; confirm "Add person" still inserts; confirm "remove" still works.
 
 ## Out of scope
 
-- Refactoring `savePerson` into an injectable person service + introducing a PGlite action-test harness (worthwhile, but a separate concern from "let users edit").
-- Any change to delete behaviour, settings, or pantry staples.
+- Any change to delete behaviour, settings, or pantry staples (beyond `deletePerson` moving to the new service unchanged).
 - Re-planning implications: editing a person changes future macro targets on the next plan/draft; no migration of existing plans is required.
