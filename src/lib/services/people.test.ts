@@ -38,6 +38,14 @@ describe('upsertPerson', () => {
     expect(row.allergies).toEqual(['gluten', 'shellfish']);
     expect(row.dislikes).toEqual([]);
   });
+
+  it('silently no-ops when updating a non-existent id', async () => {
+    const db = await createTestDb();
+    const nonExistentId = '00000000-0000-0000-0000-000000000000';
+    await upsertPerson(db, sample, nonExistentId);
+    const rows = await db.select().from(people);
+    expect(rows).toHaveLength(0);
+  });
 });
 
 describe('deletePersonById', () => {
