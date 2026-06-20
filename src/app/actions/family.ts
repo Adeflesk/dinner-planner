@@ -3,32 +3,31 @@
 import { revalidatePath } from 'next/cache';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { pantryStaples, people, settings } from '@/lib/db/schema';
+import { pantryStaples, settings } from '@/lib/db/schema';
+import { deletePersonById, upsertPerson, type PersonInput } from '@/lib/services/people';
 
 const list = (v: FormDataEntryValue | null) =>
   String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
 export async function savePerson(formData: FormData) {
-  const db = getDb();
-  const values = {
+  const input: PersonInput = {
     name: String(formData.get('name')),
     age: Number(formData.get('age')),
-    sex: String(formData.get('sex')) as 'male' | 'female',
+    sex: String(formData.get('sex')) as PersonInput['sex'],
     weightKg: Number(formData.get('weightKg')),
     heightCm: Number(formData.get('heightCm')),
-    activity: String(formData.get('activity')) as 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active',
-    goal: String(formData.get('goal')) as 'lose' | 'maintain' | 'gain',
+    activity: String(formData.get('activity')) as PersonInput['activity'],
+    goal: String(formData.get('goal')) as PersonInput['goal'],
     allergies: list(formData.get('allergies')),
     dislikes: list(formData.get('dislikes')),
   };
   const id = formData.get('id');
-  if (id) await db.update(people).set(values).where(eq(people.id, String(id)));
-  else await db.insert(people).values(values);
+  await upsertPerson(getDb(), input, id ? String(id) : undefined);
   revalidatePath('/family');
 }
 
 export async function deletePerson(formData: FormData) {
-  await getDb().delete(people).where(eq(people.id, String(formData.get('id'))));
+  await deletePersonById(getDb(), String(formData.get('id')));
   revalidatePath('/family');
 }
 
