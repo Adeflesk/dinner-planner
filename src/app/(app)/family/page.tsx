@@ -2,7 +2,8 @@ import { getDb } from '@/lib/db';
 import { pantryStaples, people, settings } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { dailyTargets, dinnerTargets } from '@/lib/macro/targets';
-import { addStaple, deletePerson, removeStaple, savePerson, saveSettings } from '@/app/actions/family';
+import { addStaple, deletePerson, removeStaple, saveSettings } from '@/app/actions/family';
+import { PersonForm } from './PersonForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,26 +45,7 @@ export default async function FamilyPage() {
 
       <section className="rounded border p-4">
         <h2 className="mb-2 font-semibold">Add person</h2>
-        <form action={savePerson} className="grid grid-cols-2 gap-2 text-sm">
-          <input name="name" placeholder="Name" required className="rounded border p-2" />
-          <input name="age" type="number" placeholder="Age" required className="rounded border p-2" />
-          <select name="sex" className="rounded border p-2">
-            <option value="male">male</option><option value="female">female</option>
-          </select>
-          <input name="weightKg" type="number" step="0.5" placeholder="Weight (kg)" required className="rounded border p-2" />
-          <input name="heightCm" type="number" placeholder="Height (cm)" required className="rounded border p-2" />
-          <select name="activity" className="rounded border p-2">
-            <option value="sedentary">sedentary</option><option value="light">light</option>
-            <option value="moderate">moderate</option><option value="active">active</option>
-            <option value="very_active">very active</option>
-          </select>
-          <select name="goal" className="rounded border p-2">
-            <option value="maintain">maintain</option><option value="lose">lose</option><option value="gain">gain</option>
-          </select>
-          <input name="allergies" placeholder="Allergies (comma-separated)" className="rounded border p-2" />
-          <input name="dislikes" placeholder="Dislikes (comma-separated)" className="rounded border p-2" />
-          <button className="col-span-2 rounded bg-emerald-700 p-2 text-white">Save person</button>
-        </form>
+        <PersonForm />
       </section>
 
       <section className="rounded border p-4">
