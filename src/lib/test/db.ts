@@ -10,5 +10,6 @@ export async function createTestDb(): Promise<Db> {
   const client = new PGlite();
   const db = drizzle(client, { schema });
   await migrate(db, { migrationsFolder: './drizzle' });
+  // PGlite's drizzle instance is structurally compatible with the Neon-typed Db.
   return db as unknown as Db;
 }

@@ -38,7 +38,7 @@ export default async function FamilyPage() {
                 {p.allergies.length > 0 && <p className="text-sm text-red-700">allergies: {p.allergies.join(', ')}</p>}
                 {p.dislikes.length > 0 && <p className="text-sm text-gray-500">dislikes: {p.dislikes.join(', ')}</p>}
                 <details className="mt-2">
-                  <summary className="cursor-pointer text-sm text-emerald-700">Edit</summary>
+                  <summary className="list-none cursor-pointer text-sm text-emerald-700">Edit</summary>
                   <div className="mt-2">
                     <PersonForm person={p} />
                   </div>
