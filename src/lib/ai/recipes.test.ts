@@ -6,7 +6,7 @@ const goodRecipe: AiRecipe = {
   name: 'Chicken stir-fry', cuisine: 'chinese', method: 'Stir fry everything.',
   servings: 4,
   perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 }, // 4/4/9-consistent
-  tags: [],
+  tags: [], equipment: [],
   ingredients: [{ name: 'chicken breast', quantity: 500, unit: 'g', section: 'meat_fish' }],
 };
 
@@ -40,6 +40,7 @@ describe('generateRecipe', () => {
 
 const goodEstimate: MacroEstimate = {
   perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 },
+  equipment: [],
   ingredients: [{ name: 'chicken breast', quantity: 500, unit: 'g', section: 'meat_fish' }],
 };
 const estimateInput = { name: 'Chicken stir-fry', servings: 4, ingredientLines: '500 g chicken breast' };

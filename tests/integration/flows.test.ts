@@ -15,7 +15,7 @@ let aiCounter = 0;
 const fakeAi = async (req: { cuisine: string }): Promise<AiRecipe> => ({
   name: `AI dinner ${++aiCounter}`, cuisine: req.cuisine, method: 'cook', servings: 4,
   perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 },
-  tags: [],
+  tags: [], equipment: [],
   ingredients: [
     { name: 'onion', quantity: 1, unit: 'pcs', section: 'produce' },
     { name: 'olive oil', quantity: 1, unit: 'tbsp', section: 'pantry' },

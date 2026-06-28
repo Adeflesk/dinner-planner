@@ -26,6 +26,7 @@ export const recipes = pgTable('recipes', {
   servings: integer('servings').notNull().default(4),
   perServing: jsonb('per_serving').$type<MacroSet>().notNull(),
   tags: jsonb('tags').$type<string[]>().notNull().default([]),
+  equipment: jsonb('equipment').$type<string[]>().notNull().default([]),
   source: text('source', { enum: ['family', 'ai'] }).notNull().default('family'),
   ingredients: jsonb('ingredients').$type<Ingredient[]>().notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -65,5 +66,6 @@ export const settings = pgTable('settings', {
   id: integer('id').primaryKey().default(1), // singleton row
   dinnerShare: real('dinner_share').notNull().default(0.35),
   cuisines: jsonb('cuisines').$type<string[]>().notNull().default([]),
+  equipment: jsonb('equipment').$type<string[]>().notNull().default([]),
   vegetarianNights: integer('vegetarian_nights').notNull().default(0),
 });

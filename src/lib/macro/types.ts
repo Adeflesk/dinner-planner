@@ -32,5 +32,6 @@ export type RecipeData = {
   servings: number;
   perServing: MacroSet;
   tags: string[];
+  equipment: string[];
   ingredients: Ingredient[];
 };

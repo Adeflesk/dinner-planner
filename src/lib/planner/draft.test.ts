@@ -4,13 +4,13 @@ import type { AiRecipe } from '@/lib/ai/schema';
 
 const fav = (name: string, cuisine: string, tags: string[] = []): FavouriteRecipe => ({
   id: `fav-${name}`, name, cuisine, method: '', servings: 4,
-  perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 }, tags,
+  perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 }, tags, equipment: [],
   ingredients: [{ name: 'x', quantity: 1, unit: 'pcs', section: 'other' }],
 });
 
 const aiRecipe = (name: string, cuisine: string, tags: string[] = []): AiRecipe => ({
   name, cuisine, method: 'cook', servings: 4,
-  perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 }, tags,
+  perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 }, tags, equipment: [],
   ingredients: [{ name: 'y', quantity: 1, unit: 'pcs', section: 'other' }],
 });
 
