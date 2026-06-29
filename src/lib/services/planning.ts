@@ -8,6 +8,7 @@ import { scale, solvePortions } from '@/lib/macro/portions';
 import { weeklyTally, weeklyTargetFor } from '@/lib/macro/tally';
 import { draftWeek, type DraftDinner, type DraftGenerateRequest } from '@/lib/planner/draft';
 import { generateRecipe, aiGenerator, type Generator } from '@/lib/ai/recipes';
+import { dayBenefit } from '@/lib/macro/equipment';
 import type { MacroSet } from '@/lib/macro/types';
 
 export async function getSettings(db: Db) {
@@ -117,6 +118,7 @@ export async function planWeek(
         cuisine: req.cuisine, targetPerServing: ctx.avgTarget,
         allergies: ctx.allergies, dislikes: ctx.dislikes,
         dietTags: req.dietTags, avoidNames: req.avoidNames,
+        equipment: ctx.config.equipment, preferBenefit: 'speed',
       },
       gen,
     );
@@ -176,6 +178,7 @@ export async function swapDay(
         cuisine, targetPerServing: ctx.avgTarget,
         allergies: ctx.allergies, dislikes: ctx.dislikes,
         dietTags: [], avoidNames: [...usedNames],
+        equipment: ctx.config.equipment, preferBenefit: dayBenefit(day),
       },
       gen,
     );
