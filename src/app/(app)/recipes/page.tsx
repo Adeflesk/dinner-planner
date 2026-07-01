@@ -1,6 +1,7 @@
 import { desc } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { recipes } from '@/lib/db/schema';
+import { CAPABILITIES } from '@/lib/macro/equipment';
 import { deleteRecipe, promoteToFavourite, saveRecipe } from '@/app/actions/recipes';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,7 @@ export default async function RecipesPage() {
               <p className="text-gray-600">
                 {r.cuisine} · {Math.round(r.perServing.kcal)} kcal · P{Math.round(r.perServing.protein)} C{Math.round(r.perServing.carbs)} F{Math.round(r.perServing.fat)}
                 {r.tags.length > 0 && <> · {r.tags.join(', ')}</>}
+                {r.equipment.length > 0 && <> · 🍳 {r.equipment.join(', ')}</>}
               </p>
               <details className="mt-1">
                 <summary className="cursor-pointer text-gray-500">ingredients & method</summary>
@@ -75,6 +77,17 @@ export default async function RecipesPage() {
             <input name="carbs" type="number" placeholder="carbs g" className="rounded border p-2" />
             <input name="fat" type="number" placeholder="fat g" className="rounded border p-2" />
           </div>
+          <fieldset>
+            <legend className="text-gray-600">Equipment used (optional)</legend>
+            <div className="flex flex-wrap gap-3">
+              {CAPABILITIES.map((cap) => (
+                <label key={cap} className="flex items-center gap-1">
+                  <input type="checkbox" name="equipment" value={cap} />
+                  {cap}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <label className="flex items-center gap-2">
             <input type="checkbox" name="estimateWithAi" defaultChecked />
             Estimate macros & store sections with AI (overrides the numbers above)

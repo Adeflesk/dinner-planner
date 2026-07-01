@@ -21,12 +21,14 @@ export async function saveRecipe(formData: FormData) {
     fat: Number(formData.get('fat')) || 0,
   };
   let ingredients = parseIngredientLines(ingredientLines);
+  let equipment = formData.getAll('equipment').map(String);
 
   if (useAi) {
     const estimate = await estimateRecipe({ name, servings, ingredientLines });
     if (estimate) {
       perServing = estimate.perServing;
       ingredients = estimate.ingredients;
+      if (estimate.equipment.length > 0) equipment = estimate.equipment;
     }
     // AI down — fall back to whatever was typed, never block saving
   }
@@ -38,6 +40,7 @@ export async function saveRecipe(formData: FormData) {
     servings,
     perServing,
     tags: String(formData.get('tags') ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    equipment,
     source: 'family',
     ingredients,
   });
