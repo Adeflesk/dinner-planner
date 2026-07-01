@@ -118,7 +118,7 @@ export async function planWeek(
         cuisine: req.cuisine, targetPerServing: ctx.avgTarget,
         allergies: ctx.allergies, dislikes: ctx.dislikes,
         dietTags: req.dietTags, avoidNames: req.avoidNames,
-        equipment: ctx.config.equipment, preferBenefit: 'speed',
+        equipment: ctx.config.equipment, preferBenefit: req.preferBenefit,
       },
       gen,
     );
@@ -129,7 +129,8 @@ export async function planWeek(
   const days = await draftWeek({
     favourites: ctx.favourites, cuisines: ctx.config.cuisines,
     recentNames: recent.map((r) => r.name),
-    pinned, vegetarianNights: ctx.config.vegetarianNights, generate,
+    pinned, vegetarianNights: ctx.config.vegetarianNights,
+    equipment: ctx.config.equipment, generate,
   });
 
   for (const dinner of days) {
