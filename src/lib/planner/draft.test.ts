@@ -8,6 +8,10 @@ const fav = (name: string, cuisine: string, tags: string[] = []): FavouriteRecip
   ingredients: [{ name: 'x', quantity: 1, unit: 'pcs', section: 'other' }],
 });
 
+const favEq = (name: string, cuisine: string, equipment: string[], tags: string[] = []): FavouriteRecipe => ({
+  ...fav(name, cuisine, tags), equipment,
+});
+
 const aiRecipe = (name: string, cuisine: string, tags: string[] = []): AiRecipe => ({
   name, cuisine, method: 'cook', servings: 4,
   perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 }, tags, equipment: [],
@@ -130,5 +134,32 @@ describe('draftWeek', () => {
     });
     // All 7 days need AI (no favourites); concurrent generation means >1 in flight at once.
     expect(maxActive).toBeGreaterThan(1);
+  });
+});
+
+describe('draftWeek equipment biasing', () => {
+  it('prefers a favourite that uses standout gear the household has', async () => {
+    const favourites = [favEq('Plain pasta', 'italian', []), favEq('Steam salmon', 'italian', ['steam'])];
+    const days = await draftWeek({
+      favourites, cuisines: ['italian'], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0, equipment: ['steam'],
+      generate: async () => null,
+    });
+    // day 0 is a favourite slot (day % 2 === 0); the steam dish should win it.
+    expect(days.find((d) => d.day === 0)?.recipe.name).toBe('Steam salmon');
+  });
+
+  it('passes the day benefit to the AI generator (speed weeknight, quality weekend)', async () => {
+    // All 7 days are AI (no favourites). Capture the benefit keyed by the slot's day.
+    const byDay: Record<number, string> = {};
+    await draftWeek({
+      favourites: [], cuisines: ['italian'], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0, equipment: ['steam', 'air-fry'],
+      generate: async (req) => { byDay[req.day] = req.preferBenefit; return null; },
+    });
+    expect(byDay[0]).toBe('speed');   // Mon
+    expect(byDay[3]).toBe('speed');   // Thu
+    expect(byDay[4]).toBe('quality'); // Fri
+    expect(byDay[6]).toBe('quality'); // Sun
   });
 });
