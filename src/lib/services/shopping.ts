@@ -29,16 +29,32 @@ export async function buildList(db: Db, weekStart: string, lowStapleNames: strin
   if (!plan) return null;
   const staples = await db.select().from(pantryStaples);
   const dinners = await weekScaledRecipes(db, weekStart);
+  const [existing] = await db.select().from(shoppingLists).where(eq(shoppingLists.weekPlanId, plan.id));
 
-  const items: StoredShoppingItem[] = aggregateIngredients(dinners, staples.map((s) => s.name))
-    .map((i) => ({ ...i, checked: false, manual: false }));
+  // A rebuild posts no staple choices, so carry forward the staples already on the
+  // list (the user ticked them as "running low" once — don't silently drop them).
+  // Quantities are re-derived below via staplesUsed, so a staple the week no
+  // longer uses falls off naturally.
+  const stapleNames = new Set(staples.map((s) => s.name.toLowerCase()));
+  const carried = (existing?.items ?? [])
+    .filter((i) => !i.manual && stapleNames.has(i.name.toLowerCase()))
+    .map((i) => i.name);
+  const lowNames = new Set([...lowStapleNames, ...carried].map((n) => n.toLowerCase()));
+
+  // Items ticked off in the shop stay ticked across a rebuild (matched by name+unit).
+  const wasChecked = new Set(
+    (existing?.items ?? []).filter((i) => i.checked).map((i) => `${i.name.toLowerCase()}|${i.unit}`),
+  );
+  const withState = (i: { name: string; unit: string } & Omit<StoredShoppingItem, 'checked' | 'manual'>): StoredShoppingItem =>
+    ({ ...i, checked: wasChecked.has(`${i.name.toLowerCase()}|${i.unit}`), manual: false });
+
+  const items: StoredShoppingItem[] = aggregateIngredients(dinners, staples.map((s) => s.name)).map(withState);
   const low = staplesUsed(dinners, staples.map((s) => s.name))
-    .filter((s) => lowStapleNames.some((n) => n.toLowerCase() === s.name.toLowerCase()))
-    .map((i) => ({ ...i, checked: false, manual: false }));
+    .filter((s) => lowNames.has(s.name.toLowerCase()))
+    .map(withState);
   items.push(...low);
 
-  // Manually added items survive a rebuild.
-  const [existing] = await db.select().from(shoppingLists).where(eq(shoppingLists.weekPlanId, plan.id));
+  // Manually added items survive a rebuild (with whatever checked state they had).
   if (existing) items.push(...existing.items.filter((i) => i.manual));
 
   // Atomic upsert: single statement, no delete-then-insert window.
