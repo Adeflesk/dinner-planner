@@ -2,6 +2,7 @@ import { getDb } from '@/lib/db';
 import { pantryStaples, people, settings } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { dailyTargets, dinnerTargets } from '@/lib/macro/targets';
+import { CAPABILITIES } from '@/lib/macro/equipment';
 import { addStaple, deletePerson, removeStaple, saveSettings } from '@/app/actions/family';
 import { PersonForm } from './PersonForm';
 
@@ -66,6 +67,22 @@ export default async function FamilyPage() {
           <label>Vegetarian nights / week
             <input name="vegetarianNights" type="number" min="0" max="7" defaultValue={config?.vegetarianNights ?? 0} className="block rounded border p-2" />
           </label>
+          <fieldset className="w-full">
+            <legend className="mb-1">Kitchen equipment</legend>
+            <div className="flex flex-wrap gap-3">
+              {CAPABILITIES.map((cap) => (
+                <label key={cap} className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    name="equipment"
+                    value={cap}
+                    defaultChecked={(config?.equipment ?? []).includes(cap)}
+                  />
+                  {cap}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <button className="rounded bg-emerald-700 p-2 text-white">Save settings</button>
         </form>
       </section>

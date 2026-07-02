@@ -18,12 +18,14 @@ export const aiRecipeSchema = z.object({
   servings: z.number().int().positive(),
   perServing: macroSetSchema,
   tags: z.array(z.string()),
+  equipment: z.array(z.string()).default([]),
   ingredients: z.array(ingredientSchema).min(1),
 });
 export type AiRecipe = z.infer<typeof aiRecipeSchema>;
 
 export const macroEstimateSchema = z.object({
   perServing: macroSetSchema,
+  equipment: z.array(z.string()).default([]),
   ingredients: z.array(ingredientSchema).min(1),
 });
 export type MacroEstimate = z.infer<typeof macroEstimateSchema>;

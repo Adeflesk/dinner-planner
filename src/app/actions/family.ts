@@ -36,6 +36,7 @@ export async function saveSettings(formData: FormData) {
   const values = {
     dinnerShare: Number(formData.get('dinnerShare')) / 100,
     cuisines: list(formData.get('cuisines')),
+    equipment: formData.getAll('equipment').map(String),
     vegetarianNights: Number(formData.get('vegetarianNights')),
   };
   await db.insert(settings).values({ id: 1, ...values })

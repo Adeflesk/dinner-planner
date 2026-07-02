@@ -15,6 +15,13 @@
       "when": 1781390471860,
       "tag": "0001_normal_toad_men",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782456387288,
+      "tag": "0002_legal_sunspot",
+      "breakpoints": true
     }
   ]
 }

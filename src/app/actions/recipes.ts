@@ -6,6 +6,7 @@ import { getDb } from '@/lib/db';
 import { recipes } from '@/lib/db/schema';
 import { estimateRecipe } from '@/lib/ai/recipes';
 import { parseIngredientLines } from '@/lib/services/ingredients';
+import { CAPABILITIES, type Capability } from '@/lib/macro/equipment';
 
 export async function saveRecipe(formData: FormData) {
   const db = getDb();
@@ -21,12 +22,15 @@ export async function saveRecipe(formData: FormData) {
     fat: Number(formData.get('fat')) || 0,
   };
   let ingredients = parseIngredientLines(ingredientLines);
+  let equipment = formData.getAll('equipment').map(String);
 
   if (useAi) {
     const estimate = await estimateRecipe({ name, servings, ingredientLines });
     if (estimate) {
       perServing = estimate.perServing;
       ingredients = estimate.ingredients;
+      const validEquipment = estimate.equipment.filter((e): e is Capability => (CAPABILITIES as readonly string[]).includes(e));
+      if (validEquipment.length > 0) equipment = validEquipment;
     }
     // AI down — fall back to whatever was typed, never block saving
   }
@@ -38,6 +42,7 @@ export async function saveRecipe(formData: FormData) {
     servings,
     perServing,
     tags: String(formData.get('tags') ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    equipment,
     source: 'family',
     ingredients,
   });
