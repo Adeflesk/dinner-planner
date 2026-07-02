@@ -28,7 +28,7 @@ describe('planWeek equipment re-screen', () => {
     const planned = await db.select().from(plannedDinners);
     const planatedRecipes = await db.select().from(recipes);
     // Re-screen rejects every AI recipe → no AI dinners persisted, week is favourites-only (empty here).
-    expect(planatedRecipes.every((r) => r.equipment.every((e) => ['steam'].includes(e)))).toBe(true);
+    expect(planatedRecipes).toHaveLength(0);
     expect(planned.length).toBe(0);
     expect(aiDegraded).toBe(true);
   });
@@ -42,7 +42,8 @@ describe('planWeek equipment re-screen', () => {
 
     const planatedRecipes = await db.select().from(recipes);
     expect(planatedRecipes.length).toBeGreaterThan(0);
-    expect(planatedRecipes.every((r) => Array.isArray(r.equipment))).toBe(true);
+    // Every AI recipe persisted must carry exactly the equipment the generator returned.
+    expect(planatedRecipes.every((r) => JSON.stringify(r.equipment) === JSON.stringify(['steam']))).toBe(true);
   });
 
   it('passes per-day preferBenefit to the generator (speed weeknight, quality weekend)', async () => {

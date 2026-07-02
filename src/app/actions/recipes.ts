@@ -6,6 +6,7 @@ import { getDb } from '@/lib/db';
 import { recipes } from '@/lib/db/schema';
 import { estimateRecipe } from '@/lib/ai/recipes';
 import { parseIngredientLines } from '@/lib/services/ingredients';
+import { CAPABILITIES, type Capability } from '@/lib/macro/equipment';
 
 export async function saveRecipe(formData: FormData) {
   const db = getDb();
@@ -28,7 +29,8 @@ export async function saveRecipe(formData: FormData) {
     if (estimate) {
       perServing = estimate.perServing;
       ingredients = estimate.ingredients;
-      if (estimate.equipment.length > 0) equipment = estimate.equipment;
+      const validEquipment = estimate.equipment.filter((e): e is Capability => (CAPABILITIES as readonly string[]).includes(e));
+      if (validEquipment.length > 0) equipment = validEquipment;
     }
     // AI down — fall back to whatever was typed, never block saving
   }

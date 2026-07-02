@@ -10,17 +10,18 @@ export type Capability = (typeof CAPABILITIES)[number];
 
 // Only these "standout" capabilities drive biasing and badging; the rest
 // (convection, grill/broil, induction-hob, microwave) are gear every kitchen has.
-export const STANDOUT: readonly Capability[] = ['steam', 'combi-steam', 'sous-vide', 'air-fry'];
+export const STANDOUT = ['steam', 'combi-steam', 'sous-vide', 'air-fry'] as const satisfies readonly Capability[];
 
 export type Benefit = 'quality' | 'speed';
-// The two premium appliances have opposite superpowers: the steam oven's edge is
-// quality (moisture, gentle cooking), the air-fry/combi-microwave's edge is speed.
+// The four quality-mapped standout capabilities (steam, combi-steam, sous-vide, air-fry)
+// map to a benefit: steam/combi-steam/sous-vide → quality (moisture, gentle cooking);
+// air-fry → speed (rapid convection). Everything else scores 0 and is not listed here.
 export const BENEFIT: Record<string, Benefit> = {
   steam: 'quality',
   'combi-steam': 'quality',
   'sous-vide': 'quality',
   'air-fry': 'speed',
-};
+} satisfies Record<string, Benefit>;
 
 const norm = (s: string) => s.trim().toLowerCase();
 
