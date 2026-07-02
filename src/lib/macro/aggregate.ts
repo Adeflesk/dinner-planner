@@ -46,9 +46,12 @@ function merge(dinners: ScaledRecipe[], include: (name: string) => boolean): Sho
   );
 }
 
+// Tap water is free — never shop for it. Exact match only ("coconut water" stays).
+const ALWAYS_EXCLUDED = new Set(['water']);
+
 export function aggregateIngredients(dinners: ScaledRecipe[], staples: string[]): ShoppingItem[] {
   const stapleSet = new Set(staples.map(norm));
-  return merge(dinners, (name) => !stapleSet.has(name));
+  return merge(dinners, (name) => !stapleSet.has(name) && !ALWAYS_EXCLUDED.has(name));
 }
 
 export function staplesUsed(dinners: ScaledRecipe[], staples: string[]): ShoppingItem[] {

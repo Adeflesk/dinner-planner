@@ -41,6 +41,20 @@ describe('aggregateIngredients', () => {
     expect(onion.quantity).toBe(3);
     expect(onion.unit).toBe('pcs');
   });
+  it('never lists water, even when it is not a configured staple', () => {
+    const items = aggregateIngredients(
+      [{ ingredients: [ing('Water', 225, 'ml', 'other'), ing('water', 1.5, 'tbsp', 'other'), ing('rice', 150, 'g', 'pantry')], scale: 1 }],
+      [],
+    );
+    expect(items.map((i) => i.name)).toEqual(['rice']);
+  });
+  it('does not exclude ingredients that merely contain the word water', () => {
+    const items = aggregateIngredients(
+      [{ ingredients: [ing('coconut water', 200, 'ml', 'other'), ing('watermelon', 1, 'pcs', 'produce')], scale: 1 }],
+      [],
+    );
+    expect(items.map((i) => i.name).sort()).toEqual(['coconut water', 'watermelon']);
+  });
   it('filters pantry staples case-insensitively', () => {
     const items = aggregateIngredients(
       [{ ingredients: [ing('Olive Oil', 2, 'tbsp', 'pantry'), ing('chicken', 500, 'g', 'meat_fish')], scale: 1 }],
