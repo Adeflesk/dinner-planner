@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { currentWeekStart, DAY_NAMES } from '@/lib/services/dates';
 import { getWeek } from '@/lib/services/planning';
 import { planMyWeek, swapDayAction, togglePinAction } from '@/app/actions/plan';
+import { standoutTags } from '@/lib/macro/equipment';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,6 +76,11 @@ export default async function PlanPage({
               {dinner ? (
                 <>
                   <p className="font-medium">{dinner.recipe.name}</p>
+                  {standoutTags(dinner.recipe.equipment).length > 0 && (
+                    <p className="text-xs text-sky-700" title={standoutTags(dinner.recipe.equipment).join(', ')}>
+                      🫧 {standoutTags(dinner.recipe.equipment).join(', ')}
+                    </p>
+                  )}
                   <p className="text-gray-600">
                     {dinner.recipe.cuisine} · {Math.round(dinner.recipe.perServing.kcal)} kcal/serv
                     {dinner.recipe.tags.includes('vegetarian') && ' · veg'}
