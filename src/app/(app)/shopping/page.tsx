@@ -38,7 +38,7 @@ export default async function ShoppingPage() {
           <h1 className="font-display text-[27px]">Shopping list</h1>
           <p className="eyebrow mt-1">Week of {weekStart}</p>
         </div>
-        <form action={buildListAction} className="card space-y-4 border-t-3 border-t-bottle p-5 text-sm">
+        <form action={buildListAction} className="card space-y-4 border-t-[3px] border-t-bottle p-5 text-sm">
           {used.length > 0 ? (
             <>
               <p className="font-medium">This week&apos;s dinners use these staples — tick any you&apos;re running low on:</p>
@@ -81,7 +81,7 @@ export default async function ShoppingPage() {
 
       {sections.map((section) => (
         <section key={section} className="card overflow-hidden">
-          <h2 className="eyebrow border-b border-line border-l-3 border-l-bottle bg-porcelain px-4 py-2">
+          <h2 className="eyebrow border-b border-line border-l-[3px] border-l-bottle bg-porcelain px-4 py-2">
             {SECTION_LABEL[section]}
           </h2>
           <ul>

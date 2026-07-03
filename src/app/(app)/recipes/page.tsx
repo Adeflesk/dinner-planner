@@ -71,7 +71,7 @@ export default async function RecipesPage() {
         </section>
       )}
 
-      <section className="card border-t-3 border-t-bottle p-5">
+      <section className="card border-t-[3px] border-t-bottle p-5">
         <h2 className="mb-3 font-display text-[19px]">Add a recipe</h2>
         <form action={saveRecipe} className="grid gap-2.5 text-sm">
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">

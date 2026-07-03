@@ -58,7 +58,7 @@ export default async function FamilyPage() {
         </ul>
       </section>
 
-      <section className="card border-t-3 border-t-bottle p-5">
+      <section className="card border-t-[3px] border-t-bottle p-5">
         <h2 className="mb-3 font-display text-[19px]">Add a person</h2>
         <PersonForm />
       </section>

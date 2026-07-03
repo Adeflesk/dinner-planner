@@ -167,7 +167,7 @@ export default async function PlanPage({
           <b className="font-semibold text-dijon">Tonight</b> · {longDay(utc(weekStart, todayIdx))}
         </p>
         {tonight ? (
-          <article className="rise card mt-2 border-t-3 border-t-bottle px-5 py-5 sm:px-7">
+          <article className="rise card mt-2 border-t-[3px] border-t-bottle px-5 py-5 sm:px-7">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-data text-[13px] text-soft">
               <span>{tonight.recipe.cuisine}</span>
               <span>{Math.round(tonight.recipe.perServing.kcal)} kcal / serving</span>
@@ -201,7 +201,7 @@ export default async function PlanPage({
             </div>
           </article>
         ) : (
-          <article className="rise card mt-2 border-t-3 border-t-line px-5 py-6 text-sm text-soft sm:px-7">
+          <article className="rise card mt-2 border-t-[3px] border-t-line px-5 py-6 text-sm text-soft sm:px-7">
             Nothing planned tonight{week.dinners.length === 0 && ' — plan your week to fill it'}.
           </article>
         )}
@@ -218,7 +218,7 @@ export default async function PlanPage({
                 key={day}
                 style={{ '--i': day + 3 } as React.CSSProperties}
                 className={`rise card flex min-h-0 flex-col gap-1.5 p-3 transition-transform hover:-translate-y-0.5 lg:min-h-[118px] ${
-                  today ? 'border-dijon border-t-3 border-t-dijon bg-dijon-soft' : ''
+                  today ? 'border-dijon border-t-[3px] border-t-dijon bg-dijon-soft' : ''
                 }`}
               >
                 <div className="flex items-center justify-between">
