@@ -19,6 +19,8 @@ npm run db:generate                       # generate drizzle migrations (require
 npm run db:push                           # apply schema to Neon
 ```
 
+**After ANY change to `src/lib/db/schema.ts`, run BOTH `db:generate` AND `db:push`.** Tests run on PGlite and apply migrations themselves, so the suite stays green even when the real Neon database is unmigrated — the app then crashes at runtime with "column does not exist". `db:generate` alone is not enough.
+
 Local env lives in `.env.local`: `DATABASE_URL` (Neon), `HOUSEHOLD_PASSWORD`, `AUTH_SECRET`, optional `AI_MODEL`. Tests need none of these — integration tests run on PGlite (in-memory Postgres) and all AI calls are faked.
 
 ## Architecture
