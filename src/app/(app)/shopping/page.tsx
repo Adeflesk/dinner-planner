@@ -22,10 +22,10 @@ export default async function ShoppingPage() {
     // No dinners → nothing to build a list from; don't offer an empty build.
     if (!(await weekHasDinners(db, weekStart))) {
       return (
-        <main className="max-w-lg space-y-4">
-          <h1 className="text-2xl font-bold">Shopping list — week of {weekStart}</h1>
-          <p className="rounded bg-blue-50 p-3 text-sm">
-            No dinners planned yet — <Link href="/" className="underline">plan your week first</Link>,
+        <main className="mx-auto w-full max-w-lg space-y-4">
+          <h1 className="font-display text-[27px]">Shopping list</h1>
+          <p className="card p-4 text-sm">
+            No dinners planned yet — <Link href="/" className="text-bottle underline underline-offset-3">plan your week first</Link>,
             then build the list from it.
           </p>
         </main>
@@ -33,18 +33,22 @@ export default async function ShoppingPage() {
     }
     const used = await staplesCheck(db, weekStart);
     return (
-      <main className="max-w-lg space-y-4">
-        <h1 className="text-2xl font-bold">Shopping list — week of {weekStart}</h1>
-        <form action={buildListAction} className="space-y-3 rounded border p-4 text-sm">
+      <main className="mx-auto w-full max-w-lg space-y-4">
+        <div>
+          <h1 className="font-display text-[27px]">Shopping list</h1>
+          <p className="eyebrow mt-1">Week of {weekStart}</p>
+        </div>
+        <form action={buildListAction} className="card space-y-4 border-t-[3px] border-t-bottle p-5 text-sm">
           {used.length > 0 ? (
             <>
               <p className="font-medium">This week&apos;s dinners use these staples — tick any you&apos;re running low on:</p>
-              <ul className="space-y-1">
+              <ul className="space-y-2.5">
                 {used.map((s) => (
                   <li key={`${s.name}|${s.unit}`}>
-                    <label className="flex items-center gap-2">
-                      <input type="checkbox" name="lowStaple" value={s.name} />
-                      {s.name} <span className="text-gray-500">(needs ~{fmtQty(s.quantity)} {s.unit})</span>
+                    <label className="flex cursor-pointer items-center gap-3">
+                      <input type="checkbox" name="lowStaple" value={s.name} className="tick" />
+                      <span>{s.name}</span>
+                      <span className="font-data text-xs text-soft">needs ~{fmtQty(s.quantity)} {s.unit}</span>
                     </label>
                   </li>
                 ))}
@@ -53,41 +57,67 @@ export default async function ShoppingPage() {
           ) : (
             <p>No pantry staples needed this week.</p>
           )}
-          <button className="rounded bg-emerald-700 px-3 py-2 text-white">Build shopping list</button>
+          <button className="btn btn-primary">Build shopping list</button>
         </form>
       </main>
     );
   }
 
   const sections = SECTION_ORDER.filter((s) => list.items.some((i) => i.section === s));
+  const remaining = list.items.filter((i) => !i.checked).length;
   return (
-    <main className="max-w-lg space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Shopping — week of {weekStart}</h1>
+    <main className="mx-auto w-full max-w-lg space-y-5">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-[27px]">Shopping</h1>
+          <p className="eyebrow mt-1">
+            Week of {weekStart} · <span className="text-bottle">{remaining} to get</span>
+          </p>
+        </div>
         <form action={buildListAction}>
-          <button className="rounded border px-2 py-1 text-sm">Rebuild</button>
+          <button className="btn btn-ghost">Rebuild</button>
         </form>
       </div>
+
       {sections.map((section) => (
-        <section key={section}>
-          <h2 className="mb-1 font-semibold">{SECTION_LABEL[section]}</h2>
-          <ul className="space-y-1 text-sm">
+        <section key={section} className="card overflow-hidden">
+          <h2 className="eyebrow border-b border-line border-l-[3px] border-l-bottle bg-porcelain px-4 py-2">
+            {SECTION_LABEL[section]}
+          </h2>
+          <ul>
             {list.items.map((item, index) =>
               item.section !== section ? null : (
-                <li key={index} className="flex items-center gap-2">
-                  <form action={toggleItemAction}>
+                <li key={index} className="flex min-h-11 items-center gap-3 border-b border-line px-4 py-1.5 last:border-b-0">
+                  <form action={toggleItemAction} className="flex">
                     <input type="hidden" name="listId" value={list.id} />
                     <input type="hidden" name="index" value={index} />
-                    <button className="w-6 text-left">{item.checked ? '[x]' : '[ ]'}</button>
+                    <button
+                      aria-label={item.checked ? `Uncheck ${item.name}` : `Check off ${item.name}`}
+                      className={`grid h-8 w-8 -m-1.5 place-content-center`}
+                    >
+                      <span
+                        className={`grid h-[19px] w-[19px] place-content-center rounded border text-[11px] leading-none ${
+                          item.checked ? 'border-bottle bg-bottle text-white' : 'border-line bg-card'
+                        }`}
+                      >
+                        {item.checked ? '✓' : ''}
+                      </span>
+                    </button>
                   </form>
-                  <span className={item.checked ? 'text-gray-400 line-through' : ''}>
-                    {fmtQty(item.quantity)} {item.unit} {item.name}
-                    {item.manual && <em className="text-gray-400"> (added)</em>}
+                  <span className={`text-sm ${item.checked ? 'text-soft line-through' : ''}`}>
+                    <span className="font-data text-[13px]">{fmtQty(item.quantity)} {item.unit}</span>{' '}
+                    {item.name}
+                    {item.manual && <em className="text-soft"> · added</em>}
                   </span>
                   <form action={removeItemAction} className="ml-auto">
                     <input type="hidden" name="listId" value={list.id} />
                     <input type="hidden" name="index" value={index} />
-                    <button className="text-xs text-red-500">x</button>
+                    <button
+                      aria-label={`Remove ${item.name}`}
+                      className="grid h-8 w-8 -m-1.5 place-content-center text-soft hover:text-tomato"
+                    >
+                      ×
+                    </button>
                   </form>
                 </li>
               ),
@@ -95,10 +125,11 @@ export default async function ShoppingPage() {
           </ul>
         </section>
       ))}
-      <form action={addItemAction} className="flex gap-2 text-sm">
+
+      <form action={addItemAction} className="flex gap-2">
         <input type="hidden" name="listId" value={list.id} />
-        <input name="name" placeholder="Add item..." className="rounded border p-2" />
-        <button className="rounded bg-emerald-700 px-3 text-white">Add</button>
+        <input name="name" placeholder="Add item…" className="field flex-1" />
+        <button className="btn btn-primary">Add</button>
       </form>
     </main>
   );

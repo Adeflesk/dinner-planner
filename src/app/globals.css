@@ -1,26 +1,199 @@
 @import "tailwindcss";
 
+/*
+ * Kitchen identity tokens — porcelain ground, bottle-green actions, dijon
+ * accents, tomato-stem reserved for warnings. Numbers are always mono.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --porcelain: #f5f6f1;
+  --ink: #26281f;
+  --muted: #6b6f60;
+  --line: #e0e2d7;
+  --bottle: #1f4a38;
+  --bottle-deep: #17392b;
+  --bottle-soft: #eaf0ea;
+  --dijon: #c79a2e;
+  --dijon-soft: #fdfbf3;
+  --tomato: #b3402e;
+  --card: #fdfdfb;
+  color-scheme: light;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-porcelain: var(--porcelain);
+  --color-ink: var(--ink);
+  --color-soft: var(--muted);
+  --color-line: var(--line);
+  --color-bottle: var(--bottle);
+  --color-bottle-deep: var(--bottle-deep);
+  --color-bottle-soft: var(--bottle-soft);
+  --color-dijon: var(--dijon);
+  --color-dijon-soft: var(--dijon-soft);
+  --color-tomato: var(--tomato);
+  --color-card: var(--card);
+  --font-display: var(--font-young-serif);
+  --font-body: var(--font-schibsted);
+  --font-data: var(--font-spline-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--porcelain);
+  color: var(--ink);
+  font-family: var(--font-schibsted), sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+:focus-visible {
+  outline: 2px solid var(--dijon);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ── shared components (flat selectors only) ─────────────────────────────
+   Kept in the components layer so Tailwind utilities (a later layer) can
+   override individual properties, e.g. `card border-t-[3px] border-t-bottle`. */
+
+@layer components {
+.eyebrow {
+  font-family: var(--font-spline-mono), monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+.btn {
+  border-radius: 6px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  display: inline-block;
+  text-decoration: none;
+  cursor: pointer;
+}
+.btn-primary {
+  background: var(--bottle);
+  color: #fff;
+  border-color: var(--bottle);
+}
+.btn-primary:hover {
+  background: var(--bottle-deep);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--bottle);
+  border-color: var(--line);
+}
+.btn-ghost:hover {
+  border-color: var(--bottle);
+}
+
+.field {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  padding: 8px 10px;
+  font-size: 14px;
+  color: var(--ink);
+  width: 100%;
+}
+.field::placeholder {
+  color: var(--muted);
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  background: var(--porcelain);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 13px;
+  font-size: 13px;
+}
+
+/* checkbox that reads as enamelware, not browser default */
+.tick {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: 1.5px solid var(--line);
+  border-radius: 4px;
+  background: var(--card);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+}
+.tick:checked {
+  background: var(--bottle);
+  border-color: var(--bottle);
+}
+.tick:checked::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+}
+
+/* ── macro threads (signature) ───────────────────────────────────────── */
+
+.thread-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: #eceee5;
+}
+.thread-weave {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--fill) * 1%);
+  max-width: 100%;
+  border-radius: 999px;
+  background: repeating-linear-gradient(90deg, var(--bottle) 0 6px, #2e6049 6px 10px);
+  animation: weave 0.9s cubic-bezier(0.25, 0.9, 0.3, 1) both;
+  animation-delay: 0.25s;
+}
+.thread-selvage {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: 100%;
+  width: 2px;
+  background: var(--dijon);
+  border-radius: 2px;
+}
+
+.rise {
+  animation: rise 0.45s ease-out both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+@keyframes weave {
+  from {
+    width: 0;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread-weave,
+  .rise {
+    animation: none;
+  }
 }
