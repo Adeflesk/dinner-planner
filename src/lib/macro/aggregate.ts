@@ -23,6 +23,12 @@ const UNIT_CANON: Record<string, string> = {
 const norm = (s: string) => s.trim().toLowerCase();
 const canonUnit = (u: string) => UNIT_CANON[norm(u)] ?? norm(u);
 
+// Units you buy in whole numbers — round up AFTER merging so "0.3 + 0.3 lemon"
+// becomes 1 lemon, not 2. Weights and volumes stay exact.
+const COUNT_UNITS = new Set(['pcs', 'can', 'clove', 'slice']);
+const shoppable = (i: ShoppingItem): ShoppingItem =>
+  COUNT_UNITS.has(i.unit) ? { ...i, quantity: Math.ceil(i.quantity) } : i;
+
 function merge(dinners: ScaledRecipe[], include: (name: string) => boolean): ShoppingItem[] {
   const map = new Map<string, ShoppingItem>();
   for (const { ingredients, scale } of dinners) {
@@ -35,14 +41,17 @@ function merge(dinners: ScaledRecipe[], include: (name: string) => boolean): Sho
       else map.set(key, { name: i.name, quantity: i.quantity * scale, unit, section: i.section });
     }
   }
-  return [...map.values()].sort(
+  return [...map.values()].map(shoppable).sort(
     (a, b) => SECTION_ORDER.indexOf(a.section) - SECTION_ORDER.indexOf(b.section) || a.name.localeCompare(b.name),
   );
 }
 
+// Tap water is free — never shop for it. Exact match only ("coconut water" stays).
+const ALWAYS_EXCLUDED = new Set(['water']);
+
 export function aggregateIngredients(dinners: ScaledRecipe[], staples: string[]): ShoppingItem[] {
   const stapleSet = new Set(staples.map(norm));
-  return merge(dinners, (name) => !stapleSet.has(name));
+  return merge(dinners, (name) => !stapleSet.has(name) && !ALWAYS_EXCLUDED.has(name));
 }
 
 export function staplesUsed(dinners: ScaledRecipe[], staples: string[]): ShoppingItem[] {

@@ -9,7 +9,7 @@ import { planWeek, swapDay, togglePin } from '@/lib/services/planning';
 export async function planMyWeek() {
   const { aiDegraded } = await planWeek(getDb(), currentWeekStart());
   revalidatePath('/');
-  if (aiDegraded) redirect('/?degraded=1');
+  redirect(aiDegraded ? '/?degraded=1' : '/?planned=1');
 }
 
 const SWAP_MODES = ['favourite', 'ai', 'ai-same-cuisine'] as const;

@@ -41,12 +41,57 @@ describe('aggregateIngredients', () => {
     expect(onion.quantity).toBe(3);
     expect(onion.unit).toBe('pcs');
   });
+  it('never lists water, even when it is not a configured staple', () => {
+    const items = aggregateIngredients(
+      [{ ingredients: [ing('Water', 225, 'ml', 'other'), ing('water', 1.5, 'tbsp', 'other'), ing('rice', 150, 'g', 'pantry')], scale: 1 }],
+      [],
+    );
+    expect(items.map((i) => i.name)).toEqual(['rice']);
+  });
+  it('does not exclude ingredients that merely contain the word water', () => {
+    const items = aggregateIngredients(
+      [{ ingredients: [ing('coconut water', 200, 'ml', 'other'), ing('watermelon', 1, 'pcs', 'produce')], scale: 1 }],
+      [],
+    );
+    expect(items.map((i) => i.name).sort()).toEqual(['coconut water', 'watermelon']);
+  });
   it('filters pantry staples case-insensitively', () => {
     const items = aggregateIngredients(
       [{ ingredients: [ing('Olive Oil', 2, 'tbsp', 'pantry'), ing('chicken', 500, 'g', 'meat_fish')], scale: 1 }],
       ['olive oil'],
     );
     expect(items.map((i) => i.name)).toEqual(['chicken']);
+  });
+  it('rounds countable units (pcs, can, clove, slice) up to whole numbers', () => {
+    const items = aggregateIngredients(
+      [{
+        ingredients: [
+          ing('egg', 1, 'pcs', 'dairy'),
+          ing('black bean', 3, 'can', 'pantry'),
+          ing('garlic', 5, 'clove', 'produce'),
+          ing('flour', 300, 'g', 'pantry'),
+        ],
+        scale: 0.75,
+      }],
+      [],
+    );
+    const byName = Object.fromEntries(items.map((i) => [i.name, i.quantity]));
+    expect(byName['egg']).toBe(1);        // 0.75 → 1 (can't buy 0.75 of an egg)
+    expect(byName['black bean']).toBe(3); // 2.25 → 3 cans
+    expect(byName['garlic']).toBe(4);     // 3.75 → 4 cloves
+    expect(byName['flour']).toBe(225);    // weights stay exact
+  });
+  it('rounds countable units up after merging across dinners, not per dinner', () => {
+    // 0.6 + 0.6 = 1.2 → 2 pcs; per-dinner ceiling would give 1 + 1 = 2 as well,
+    // so use 0.3 + 0.3 = 0.6 → 1 (per-dinner ceiling would wrongly give 2).
+    const items = aggregateIngredients(
+      [
+        { ingredients: [ing('lemon', 0.3, 'pcs', 'produce')], scale: 1 },
+        { ingredients: [ing('lemon', 0.3, 'pcs', 'produce')], scale: 1 },
+      ],
+      [],
+    );
+    expect(items[0].quantity).toBe(1);
   });
   it('sorts by store section order then name', () => {
     const items = aggregateIngredients(
