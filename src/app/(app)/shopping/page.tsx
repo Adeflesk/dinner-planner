@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getDb } from '@/lib/db';
 import { currentWeekStart } from '@/lib/services/dates';
-import { getList, staplesCheck } from '@/lib/services/shopping';
+import { getList, staplesCheck, weekHasDinners } from '@/lib/services/shopping';
 import { SECTION_ORDER } from '@/lib/macro/aggregate';
 import { addItemAction, buildListAction, removeItemAction, toggleItemAction } from '@/app/actions/shopping';
 
@@ -19,6 +19,18 @@ export default async function ShoppingPage() {
   const list = await getList(db, weekStart);
 
   if (!list) {
+    // No dinners → nothing to build a list from; don't offer an empty build.
+    if (!(await weekHasDinners(db, weekStart))) {
+      return (
+        <main className="max-w-lg space-y-4">
+          <h1 className="text-2xl font-bold">Shopping list — week of {weekStart}</h1>
+          <p className="rounded bg-blue-50 p-3 text-sm">
+            No dinners planned yet — <Link href="/" className="underline">plan your week first</Link>,
+            then build the list from it.
+          </p>
+        </main>
+      );
+    }
     const used = await staplesCheck(db, weekStart);
     return (
       <main className="max-w-lg space-y-4">
@@ -43,9 +55,6 @@ export default async function ShoppingPage() {
           )}
           <button className="rounded bg-emerald-700 px-3 py-2 text-white">Build shopping list</button>
         </form>
-        <p className="text-sm text-gray-500">
-          No dinners planned yet? <Link href="/" className="underline">Plan your week first.</Link>
-        </p>
       </main>
     );
   }

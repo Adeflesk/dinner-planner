@@ -11,9 +11,9 @@ const STATUS_ICON = { ok: '✓', over: '▲', under: '▼' } as const;
 export default async function PlanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ degraded?: string }>;
+  searchParams: Promise<{ degraded?: string; planned?: string }>;
 }) {
-  const { degraded } = await searchParams;
+  const { degraded, planned } = await searchParams;
   const weekStart = currentWeekStart();
   const week = await getWeek(getDb(), weekStart);
   const personName = (id: string) => week.people.find((p) => p.id === id)?.name ?? '?';
@@ -35,6 +35,12 @@ export default async function PlanPage({
       {degraded && (
         <p className="rounded bg-amber-100 p-2 text-sm">
           AI suggestions were unavailable — this week was drafted from favourites only.
+        </p>
+      )}
+
+      {planned && (
+        <p className="rounded bg-emerald-50 p-2 text-sm">
+          Week planned — <Link className="font-medium underline" href="/shopping">build your shopping list →</Link>
         </p>
       )}
 

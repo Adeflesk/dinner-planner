@@ -17,6 +17,15 @@ async function weekScaledRecipes(db: Db, weekStart: string): Promise<ScaledRecip
   return out;
 }
 
+/** Whether any dinner is planned this week — drives the shopping page's empty-state copy. */
+export async function weekHasDinners(db: Db, weekStart: string): Promise<boolean> {
+  const [plan] = await db.select().from(weekPlans).where(eq(weekPlans.weekStart, weekStart));
+  if (!plan) return false;
+  const [dinner] = await db.select({ id: plannedDinners.id }).from(plannedDinners)
+    .where(eq(plannedDinners.weekPlanId, plan.id)).limit(1);
+  return dinner !== undefined;
+}
+
 /** Staples this week's dinners actually use — shown before building the list. */
 export async function staplesCheck(db: Db, weekStart: string) {
   const staples = await db.select().from(pantryStaples);

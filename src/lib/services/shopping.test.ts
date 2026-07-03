@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/lib/test/db';
 import type { Db } from '@/lib/db';
 import { pantryStaples, plannedDinners, recipes, weekPlans } from '@/lib/db/schema';
-import { addItem, buildList, toggleItem } from './shopping';
+import { addItem, buildList, toggleItem, weekHasDinners } from './shopping';
 
 const WEEK = '2026-06-29';
 
@@ -24,6 +24,15 @@ async function seedWeek(db: Db) {
     weekPlanId: plan.id, day: 0, recipeId: recipe.id, householdServings: 4, portions: [],
   });
 }
+
+describe('weekHasDinners', () => {
+  it('is false for an unplanned week and true once a dinner exists', async () => {
+    const db = await createTestDb();
+    expect(await weekHasDinners(db, WEEK)).toBe(false);
+    await seedWeek(db);
+    expect(await weekHasDinners(db, WEEK)).toBe(true);
+  });
+});
 
 describe('buildList rebuild behaviour', () => {
   it('keeps previously ticked low staples on rebuild, quantity re-derived', async () => {
