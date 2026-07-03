@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createTestDb } from '@/lib/test/db';
 import { people, recipes, settings, plannedDinners } from '@/lib/db/schema';
-import { planWeek } from './planning';
+import { getWeek, planWeek } from './planning';
 import type { Generator } from '@/lib/ai/recipes';
 import type { RecipeRequest } from '@/lib/ai/recipes';
 
@@ -14,6 +14,20 @@ const makeAi = (equipment: string[]): Generator => async (req) => ({
   name: `AI ${req.cuisine} ${Math.random()}`, cuisine: req.cuisine, method: 'cook', servings: 4,
   perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 }, tags: req.dietTags, equipment,
   ingredients: [{ name: 'thing', quantity: 1, unit: 'pcs', section: 'other' }],
+});
+
+describe('getWeek', () => {
+  it('exposes the weekly macro target alongside the tally', async () => {
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: [] });
+    await planWeek(db, '2026-06-29', makeAi([]));
+
+    const week = await getWeek(db, '2026-06-29');
+    // Target for the number of nights actually planned; one adult → strictly positive.
+    expect(week.weeklyTarget.kcal).toBeGreaterThan(0);
+    expect(week.weeklyTarget.protein).toBeGreaterThan(0);
+  });
 });
 
 describe('planWeek equipment re-screen', () => {
