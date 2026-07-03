@@ -7,18 +7,23 @@ export default async function LoginPage({
 }) {
   const { error } = await searchParams;
   return (
-    <main className="mx-auto mt-24 max-w-sm p-6">
-      <h1 className="mb-4 text-2xl font-bold">Dinner Planner</h1>
-      <form action={login} className="space-y-3">
-        <input
-          type="password" name="password" placeholder="Household password" required
-          className="w-full rounded border p-2"
-        />
-        {error && <p className="text-sm text-red-600">Wrong password.</p>}
-        <button type="submit" className="w-full rounded bg-emerald-700 p-2 text-white">
-          Enter
-        </button>
-      </form>
+    <main className="mx-auto mt-24 w-full max-w-sm p-6">
+      <div className="card border-t-3 border-t-bottle p-7">
+        <h1 className="mb-1 font-display text-2xl">
+          Dinner<span className="text-bottle">&hairsp;Planner</span>
+        </h1>
+        <p className="mb-5 text-sm text-soft">One password for the whole household.</p>
+        <form action={login} className="space-y-3">
+          <input
+            type="password" name="password" placeholder="Household password" required
+            className="field"
+          />
+          {error && <p className="text-sm text-tomato">Wrong password — try again.</p>}
+          <button type="submit" className="btn btn-primary w-full">
+            Enter the kitchen
+          </button>
+        </form>
+      </div>
     </main>
   );
 }
