@@ -116,3 +116,64 @@ describe('staplesUsed', () => {
     expect(used[0].quantity).toBe(4); // 2*1.5 + 1
   });
 });
+
+describe('ingredient canon merging', () => {
+  it('merges pcs and grams of the same produce into ceiled pieces', () => {
+    const items = aggregateIngredients(
+      [
+        { ingredients: [ing('onion', 3, 'pcs', 'produce')], scale: 1 },
+        { ingredients: [ing('onion', 337.5, 'g', 'produce')], scale: 1 },
+      ],
+      [],
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ name: 'onion', quantity: 6, unit: 'pcs' }); // 3 + 2.25 → ceil
+  });
+  it('merges clove and grams of garlic into ceiled cloves', () => {
+    const items = aggregateIngredients(
+      [{ ingredients: [ing('garlic', 12, 'clove', 'produce'), ing('garlic', 11.25, 'g', 'produce')], scale: 1 }],
+      [],
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ quantity: 16, unit: 'clove' }); // 12 + 3.75 → ceil
+  });
+  it('merges waterlike ml and g into grams', () => {
+    const items = aggregateIngredients(
+      [{ ingredients: [ing('sour cream', 75, 'ml', 'dairy'), ing('sour cream', 150, 'g', 'dairy')], scale: 1 }],
+      [],
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ quantity: 225, unit: 'g' });
+  });
+  it('merges synonym-split lines (scallion + green onion)', () => {
+    const items = aggregateIngredients(
+      [{ ingredients: [ing('scallion', 2, 'pcs', 'produce'), ing('green onion', 1, 'pcs', 'produce')], scale: 1 }],
+      [],
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0].name).toBe('green onion');
+    expect(items[0].quantity).toBe(3);
+  });
+  it('does not merge distinct products that look similar', () => {
+    const items = aggregateIngredients(
+      [{ ingredients: [ing('basmati rice', 330, 'g', 'pantry'), ing('brown rice', 180, 'g', 'pantry'), ing('white rice', 180, 'g', 'pantry')], scale: 1 }],
+      [],
+    );
+    expect(items).toHaveLength(3);
+  });
+  it('filters staples by canonical name (staple "green onion" catches scallion)', () => {
+    const items = aggregateIngredients(
+      [{ ingredients: [ing('Scallion', 2, 'pcs', 'produce'), ing('chicken breast', 500, 'g', 'meat_fish')], scale: 1 }],
+      ['green onion'],
+    );
+    expect(items.map((i) => i.name)).toEqual(['chicken breast']);
+  });
+  it('reports staple usage under the canonical name and buyable unit', () => {
+    const used = staplesUsed(
+      [{ ingredients: [ing('spring onion', 37.5, 'g', 'produce')], scale: 1 }],
+      ['green onion'],
+    );
+    expect(used).toHaveLength(1);
+    expect(used[0].name).toBe('green onion');
+  });
+});

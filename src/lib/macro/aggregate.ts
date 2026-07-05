@@ -1,4 +1,5 @@
 import type { Ingredient, StoreSection } from './types';
+import { canonicalName, toBuyable } from './canon';
 
 export type ShoppingItem = { name: string; quantity: number; unit: string; section: StoreSection };
 export type ScaledRecipe = { ingredients: Ingredient[]; scale: number };
@@ -33,12 +34,15 @@ function merge(dinners: ScaledRecipe[], include: (name: string) => boolean): Sho
   const map = new Map<string, ShoppingItem>();
   for (const { ingredients, scale } of dinners) {
     for (const i of ingredients) {
-      if (!include(norm(i.name))) continue;
-      const unit = canonUnit(i.unit);
-      const key = `${norm(i.name)}|${unit}`;
+      const name = canonicalName(i.name);
+      if (!include(name)) continue;
+      // Convert toward the buyable unit BEFORE keying, so "337.5 g onion"
+      // and "3 pcs onion" land on the same pcs line.
+      const b = toBuyable({ name, quantity: i.quantity * scale, unit: canonUnit(i.unit) });
+      const key = `${b.name}|${b.unit}`;
       const existing = map.get(key);
-      if (existing) existing.quantity += i.quantity * scale;
-      else map.set(key, { name: i.name, quantity: i.quantity * scale, unit, section: i.section });
+      if (existing) existing.quantity += b.quantity;
+      else map.set(key, { name: b.name, quantity: b.quantity, unit: b.unit, section: i.section });
     }
   }
   return [...map.values()].map(shoppable).sort(
@@ -50,11 +54,11 @@ function merge(dinners: ScaledRecipe[], include: (name: string) => boolean): Sho
 const ALWAYS_EXCLUDED = new Set(['water']);
 
 export function aggregateIngredients(dinners: ScaledRecipe[], staples: string[]): ShoppingItem[] {
-  const stapleSet = new Set(staples.map(norm));
+  const stapleSet = new Set(staples.map(canonicalName));
   return merge(dinners, (name) => !stapleSet.has(name) && !ALWAYS_EXCLUDED.has(name));
 }
 
 export function staplesUsed(dinners: ScaledRecipe[], staples: string[]): ShoppingItem[] {
-  const stapleSet = new Set(staples.map(norm));
+  const stapleSet = new Set(staples.map(canonicalName));
   return merge(dinners, (name) => stapleSet.has(name));
 }
