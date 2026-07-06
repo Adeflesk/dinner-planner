@@ -25,6 +25,28 @@ async function seedWeek(db: Db) {
   });
 }
 
+/**
+ * A pantry staple stored under a synonym ("scallion") whose planned dinner uses
+ * the canonical ingredient name ("green onion") — the shape the ingredient canon
+ * (Task 2) now produces for staplesUsed()/aggregateIngredients() output.
+ */
+async function seedSynonymStapleWeek(db: Db) {
+  await db.insert(pantryStaples).values({ name: 'scallion' });
+  const [recipe] = await db.insert(recipes).values({
+    name: 'Stir fry',
+    perServing: { kcal: 500, protein: 30, carbs: 50, fat: 15 },
+    servings: 4,
+    ingredients: [
+      { name: 'green onion', quantity: 2, unit: 'pcs', section: 'produce' },
+      { name: 'chicken breast', quantity: 500, unit: 'g', section: 'meat_fish' },
+    ],
+  }).returning();
+  const [plan] = await db.insert(weekPlans).values({ weekStart: WEEK }).returning();
+  await db.insert(plannedDinners).values({
+    weekPlanId: plan.id, day: 0, recipeId: recipe.id, householdServings: 4, portions: [],
+  });
+}
+
 describe('weekHasDinners', () => {
   it('is false for an unplanned week and true once a dinner exists', async () => {
     const db = await createTestDb();
@@ -75,6 +97,20 @@ describe('buildList rebuild behaviour', () => {
     const withManual = (await buildList(db, WEEK, []))!;
     const manual = withManual.items.find((i) => i.manual);
     expect(manual?.name).toBe('dishwasher tablets');
+  });
+
+  it('carries forward a staple stored under a synonym across rebuild (canon regression)', async () => {
+    const db = await createTestDb();
+    await seedSynonymStapleWeek(db);
+    // First build: user ticks the staple as low. staplesUsed/aggregateIngredients now
+    // key everything under the canonical name ("green onion"), so that's the name the
+    // staples-check UI shows and the name the caller ticks.
+    const first = (await buildList(db, WEEK, ['green onion']))!;
+    expect(first.items.map((i) => i.name.toLowerCase())).toContain('green onion');
+
+    // Rebuild posts no staple choices — relies entirely on carry-forward.
+    const rebuilt = (await buildList(db, WEEK, []))!;
+    expect(rebuilt.items.map((i) => i.name.toLowerCase())).toContain('green onion');
   });
 
   it('does not resurrect a staple the week no longer uses', async () => {

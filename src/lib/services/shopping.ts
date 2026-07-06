@@ -4,6 +4,7 @@ import {
   pantryStaples, plannedDinners, recipes, shoppingLists, weekPlans, type StoredShoppingItem,
 } from '@/lib/db/schema';
 import { aggregateIngredients, staplesUsed, type ScaledRecipe } from '@/lib/macro/aggregate';
+import { canonicalName } from '@/lib/macro/canon';
 
 async function weekScaledRecipes(db: Db, weekStart: string): Promise<ScaledRecipe[]> {
   const [plan] = await db.select().from(weekPlans).where(eq(weekPlans.weekStart, weekStart));
@@ -44,11 +45,11 @@ export async function buildList(db: Db, weekStart: string, lowStapleNames: strin
   // list (the user ticked them as "running low" once — don't silently drop them).
   // Quantities are re-derived below via staplesUsed, so a staple the week no
   // longer uses falls off naturally.
-  const stapleNames = new Set(staples.map((s) => s.name.toLowerCase()));
+  const stapleNames = new Set(staples.map((s) => canonicalName(s.name)));
   const carried = (existing?.items ?? [])
-    .filter((i) => !i.manual && stapleNames.has(i.name.toLowerCase()))
+    .filter((i) => !i.manual && stapleNames.has(canonicalName(i.name)))
     .map((i) => i.name);
-  const lowNames = new Set([...lowStapleNames, ...carried].map((n) => n.toLowerCase()));
+  const lowNames = new Set([...lowStapleNames, ...carried].map(canonicalName));
 
   // Items ticked off in the shop stay ticked across a rebuild (matched by name+unit).
   const wasChecked = new Set(
@@ -59,7 +60,7 @@ export async function buildList(db: Db, weekStart: string, lowStapleNames: strin
 
   const items: StoredShoppingItem[] = aggregateIngredients(dinners, staples.map((s) => s.name)).map(withState);
   const low = staplesUsed(dinners, staples.map((s) => s.name))
-    .filter((s) => lowNames.has(s.name.toLowerCase()))
+    .filter((s) => lowNames.has(canonicalName(s.name)))
     .map(withState);
   items.push(...low);
 
