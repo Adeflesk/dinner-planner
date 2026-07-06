@@ -8,11 +8,14 @@ const MODEL = () => process.env.AI_MODEL ?? 'anthropic/claude-haiku-4.5';
 const TIMEOUT_MS = 20_000;
 
 // Steer ingredient names/units toward a canonical form so the shopping-list aggregator
-// can actually merge duplicates across recipes (see aggregate.ts UNIT_CANON).
+// can actually merge duplicates across recipes (see aggregate.ts UNIT_CANON and canon.ts).
 const UNIT_GUIDANCE =
   'For each ingredient use a simple, singular, lowercase name with no brand or descriptor ' +
   'words (e.g. "onion" not "1 medium yellow onion", "chicken breast" not "boneless skinless ' +
-  'chicken breasts"). Use only these units: g, kg, ml, l, tbsp, tsp, cup, pcs, clove, can, slice.';
+  'chicken breasts"). Use only these units: g, kg, ml, l, tbsp, tsp, cup, pcs, clove, can, slice. ' +
+  'Measure whole produce in pcs, not grams (e.g. "2 pcs onion", "1 pcs bell pepper"); use clove ' +
+  'for garlic. Use one canonical name per ingredient: "green onion" not "scallion" or ' +
+  '"spring onion", "cilantro" not "fresh coriander", "bell pepper" not "capsicum".';
 
 // Make the method actually exploit the gear rather than name-drop it. Steam-oven
 // moisture control IS the feature; pure steam caps at 100°C; the oven is one cavity;
