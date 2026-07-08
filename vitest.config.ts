@@ -13,9 +13,6 @@ export default defineConfig({
     // fixes the contention at its source; the raised timeout is a safety margin on
     // top, not a substitute — both are needed for a reliably green `npm test`.
     testTimeout: 15000,
-    poolOptions: {
-      threads: { maxThreads: 4 },
-      forks: { maxForks: 4 },
-    },
+    maxWorkers: 4,
   },
 });
