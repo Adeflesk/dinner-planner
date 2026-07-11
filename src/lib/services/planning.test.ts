@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createTestDb } from '@/lib/test/db';
 import { people, recipes, settings, plannedDinners } from '@/lib/db/schema';
 import { getWeek, planWeek } from './planning';
+import { buildList, getList } from './shopping';
 import type { Generator } from '@/lib/ai/recipes';
 import type { RecipeRequest } from '@/lib/ai/recipes';
 
@@ -81,5 +82,28 @@ describe('planWeek equipment re-screen', () => {
     // With a full week including Fri-Sun, 'quality' should appear too.
     expect([...seenBenefits]).toContain('speed');
     expect([...seenBenefits]).toContain('quality');
+  });
+});
+
+describe('two-week window', () => {
+  it('this week and next week plan and shop independently', async () => {
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: [] });
+
+    await planWeek(db, '2026-07-06', makeAi([]));
+    await planWeek(db, '2026-07-13', makeAi([]));
+
+    const dinners = await db.select().from(plannedDinners);
+    expect(dinners.length).toBeGreaterThan(7); // two separate weeks of dinners
+
+    const thisList = (await buildList(db, '2026-07-06', []))!;
+    const nextList = (await buildList(db, '2026-07-13', []))!;
+    expect(thisList.id).not.toBe(nextList.id);
+
+    // Re-planning NEXT week invalidates only next week's list.
+    await planWeek(db, '2026-07-13', makeAi([]));
+    expect(await getList(db, '2026-07-06')).not.toBeNull();
+    expect(await getList(db, '2026-07-13')).toBeNull();
   });
 });
