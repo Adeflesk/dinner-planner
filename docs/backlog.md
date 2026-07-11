@@ -57,3 +57,7 @@ appliance-aware feature is dormant — tick the Miele gear.
   strong; the login action currently allows unlimited attempts.
 - **Monitoring** — no log drains / error tracking on the Vercel project.
   Fine for a family app; revisit if debugging prod ever gets annoying.
+- **`cup` units aren't in the canon** — spotted on the live week-of-Jul-6 list:
+  two `basmati rice` lines because one recipe measured in gram and another in
+  a unit the canon can't convert (e.g. cup). Adding per-ingredient cup→g
+  factors for rice/flour-like staples would merge these.
