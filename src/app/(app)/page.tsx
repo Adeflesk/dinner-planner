@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { getDb } from '@/lib/db';
-import { currentWeekStart, DAY_NAMES } from '@/lib/services/dates';
+import { currentWeekStart, DAY_NAMES, resolveWeekStart } from '@/lib/services/dates';
 import { getWeek } from '@/lib/services/planning';
 import { planMyWeek, swapDayAction, togglePinAction } from '@/app/actions/plan';
 import { standoutTags } from '@/lib/macro/equipment';
+import { WeekTabs } from './WeekTabs';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,13 +23,14 @@ const shortDate = (d: Date) =>
 type Week = Awaited<ReturnType<typeof getWeek>>;
 type Dinner = Week['dinners'][number];
 
-function SwapButtons({ day, cuisine }: { day: number; cuisine: string }) {
+function SwapButtons({ day, cuisine, week }: { day: number; cuisine: string; week: string }) {
   return (
     <div className="flex flex-wrap gap-2">
       {(['favourite', 'ai', 'ai-same-cuisine'] as const).map((mode) => (
         <form key={mode} action={swapDayAction}>
           <input type="hidden" name="day" value={day} />
           <input type="hidden" name="mode" value={mode} />
+          <input type="hidden" name="week" value={week} />
           <button className="rounded-full border border-line px-3 py-1 text-xs text-soft hover:border-bottle hover:text-bottle">
             {mode === 'favourite' ? 'Another favourite' : mode === 'ai' ? 'New idea' : `More ${cuisine}`}
           </button>
@@ -38,10 +40,11 @@ function SwapButtons({ day, cuisine }: { day: number; cuisine: string }) {
   );
 }
 
-function PinButton({ day, pinned }: { day: number; pinned: boolean }) {
+function PinButton({ day, pinned, week }: { day: number; pinned: boolean; week: string }) {
   return (
     <form action={togglePinAction}>
       <input type="hidden" name="day" value={day} />
+      <input type="hidden" name="week" value={week} />
       <button
         title={pinned ? 'Unpin' : 'Pin (survives re-plan)'}
         className={`font-data text-[11px] ${pinned ? 'text-bottle' : 'text-soft hover:text-ink'}`}
@@ -94,15 +97,17 @@ function DinnerDetail({ dinner, personName }: { dinner: Dinner; personName: (id:
 export default async function PlanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ degraded?: string; planned?: string }>;
+  searchParams: Promise<{ degraded?: string; planned?: string; week?: string }>;
 }) {
-  const { degraded, planned } = await searchParams;
-  const weekStart = currentWeekStart();
+  const { degraded, planned, week: weekParam } = await searchParams;
+  const isNext = weekParam === 'next';
+  const weekRaw = isNext ? 'next' : '';           // hidden-input value; '' resolves to current
+  const weekStart = resolveWeekStart(isNext ? 'next' : undefined);
   const week = await getWeek(getDb(), weekStart);
   const personName = (id: string) => week.people.find((p) => p.id === id)?.name ?? '?';
 
   const todayIdx = (new Date().getUTCDay() + 6) % 7;
-  const tonight = week.dinners.find((d) => d.day === todayIdx);
+  const tonight = isNext ? undefined : week.dinners.find((d) => d.day === todayIdx);
   const fill = (k: (typeof MACROS)[number]) =>
     week.weeklyTarget[k] > 0 ? Math.min(100, Math.round((week.tally.totals[k] / week.weeklyTarget[k]) * 100)) : 0;
 
@@ -112,14 +117,16 @@ export default async function PlanPage({
         <div>
           <h1 className="font-display text-[27px]">Week of {longDay(utc(weekStart)).replace(/^\w+ /, '')}</h1>
           <p className="eyebrow mt-1">{shortDate(utc(weekStart))} — {shortDate(utc(weekStart, 6))}</p>
+          <div className="mt-2.5"><WeekTabs basePath="/" isNext={isNext} /></div>
         </div>
         <div className="flex gap-2.5">
           <form action={planMyWeek}>
+            <input type="hidden" name="week" value={weekRaw} />
             <button className="btn btn-primary">
               {week.dinners.length ? 'Re-plan week' : 'Plan my week'}
             </button>
           </form>
-          <Link href="/shopping" className="btn btn-ghost">Shopping list →</Link>
+          <Link href={isNext ? '/shopping?week=next' : '/shopping'} className="btn btn-ghost">Shopping list →</Link>
         </div>
       </div>
 
@@ -131,7 +138,7 @@ export default async function PlanPage({
 
       {planned && (
         <p className="card border-bottle bg-bottle-soft p-3 text-sm">
-          Week planned — <Link className="font-medium underline underline-offset-3" href="/shopping">build your shopping list →</Link>
+          Week planned — <Link className="font-medium underline underline-offset-3" href={isNext ? '/shopping?week=next' : '/shopping'}>build your shopping list →</Link>
         </p>
       )}
 
@@ -162,57 +169,59 @@ export default async function PlanPage({
         </section>
       )}
 
-      <section aria-label="Tonight">
-        <p className="eyebrow">
-          <b className="font-semibold text-dijon">Tonight</b> · {longDay(utc(weekStart, todayIdx))}
-        </p>
-        {tonight ? (
-          <article className="rise card mt-2 border-t-[3px] border-t-bottle px-5 py-5 sm:px-7">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-data text-[13px] text-soft">
-              <span>{tonight.recipe.cuisine}</span>
-              <span>{Math.round(tonight.recipe.perServing.kcal)} kcal / serving</span>
-              {tonight.recipe.tags.includes('vegetarian') && <span className="text-bottle">veg</span>}
-              {standoutTags(tonight.recipe.equipment).map((t) => (
-                <span key={t} className="rounded-full bg-bottle-soft px-2.5 py-0.5 text-bottle">{t}</span>
-              ))}
-            </div>
-            <h2 className="mt-1.5 max-w-[26ch] font-display text-[clamp(24px,3.5vw,36px)] leading-[1.15]">
-              {tonight.recipe.name}
-            </h2>
-            <div className="mt-3.5 flex flex-wrap gap-2">
-              {tonight.portions.map((p) => (
-                <span key={p.personId} className="chip">
-                  <b className="font-medium">{personName(p.personId)}</b>
-                  <span className={`font-data text-xs ${p.withinTolerance ? 'text-bottle' : 'text-dijon'}`}>
-                    ×{p.servings.toFixed(2)}
-                  </span>
-                </span>
-              ))}
-            </div>
-            {tonight.portions.some((p) => !p.withinTolerance) && (
-              <p className="mt-2 text-sm text-dijon">Portions are off-target for some people tonight.</p>
-            )}
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-dashed border-line pt-3.5">
-              <div className="flex items-center gap-4">
-                <DinnerDetail dinner={tonight} personName={personName} />
-                <PinButton day={todayIdx} pinned={tonight.pinned} />
+      {!isNext && (
+        <section aria-label="Tonight">
+          <p className="eyebrow">
+            <b className="font-semibold text-dijon">Tonight</b> · {longDay(utc(weekStart, todayIdx))}
+          </p>
+          {tonight ? (
+            <article className="rise card mt-2 border-t-[3px] border-t-bottle px-5 py-5 sm:px-7">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-data text-[13px] text-soft">
+                <span>{tonight.recipe.cuisine}</span>
+                <span>{Math.round(tonight.recipe.perServing.kcal)} kcal / serving</span>
+                {tonight.recipe.tags.includes('vegetarian') && <span className="text-bottle">veg</span>}
+                {standoutTags(tonight.recipe.equipment).map((t) => (
+                  <span key={t} className="rounded-full bg-bottle-soft px-2.5 py-0.5 text-bottle">{t}</span>
+                ))}
               </div>
-              <SwapButtons day={todayIdx} cuisine={tonight.recipe.cuisine} />
-            </div>
-          </article>
-        ) : (
-          <article className="rise card mt-2 border-t-[3px] border-t-line px-5 py-6 text-sm text-soft sm:px-7">
-            Nothing planned tonight{week.dinners.length === 0 && ' — plan your week to fill it'}.
-          </article>
-        )}
-      </section>
+              <h2 className="mt-1.5 max-w-[26ch] font-display text-[clamp(24px,3.5vw,36px)] leading-[1.15]">
+                {tonight.recipe.name}
+              </h2>
+              <div className="mt-3.5 flex flex-wrap gap-2">
+                {tonight.portions.map((p) => (
+                  <span key={p.personId} className="chip">
+                    <b className="font-medium">{personName(p.personId)}</b>
+                    <span className={`font-data text-xs ${p.withinTolerance ? 'text-bottle' : 'text-dijon'}`}>
+                      ×{p.servings.toFixed(2)}
+                    </span>
+                  </span>
+                ))}
+              </div>
+              {tonight.portions.some((p) => !p.withinTolerance) && (
+                <p className="mt-2 text-sm text-dijon">Portions are off-target for some people tonight.</p>
+              )}
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-dashed border-line pt-3.5">
+                <div className="flex items-center gap-4">
+                  <DinnerDetail dinner={tonight} personName={personName} />
+                  <PinButton day={todayIdx} pinned={tonight.pinned} week={weekRaw} />
+                </div>
+                <SwapButtons day={todayIdx} cuisine={tonight.recipe.cuisine} week={weekRaw} />
+              </div>
+            </article>
+          ) : (
+            <article className="rise card mt-2 border-t-[3px] border-t-line px-5 py-6 text-sm text-soft sm:px-7">
+              Nothing planned tonight{week.dinners.length === 0 && ' — plan your week to fill it'}.
+            </article>
+          )}
+        </section>
+      )}
 
       <section aria-label="Week at a glance">
         <p className="eyebrow mb-2.5">The week</p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-7">
           {Array.from({ length: 7 }, (_, day) => {
             const dinner = week.dinners.find((d) => d.day === day);
-            const today = day === todayIdx;
+            const today = !isNext && day === todayIdx;
             return (
               <article
                 key={day}
@@ -225,7 +234,7 @@ export default async function PlanPage({
                   <span className={`font-data text-[10.5px] tracking-[0.1em] uppercase ${today ? 'font-semibold text-dijon' : 'text-soft'}`}>
                     {DAY_NAMES[day]}{today && ' · today'}
                   </span>
-                  {dinner && <PinButton day={day} pinned={dinner.pinned} />}
+                  {dinner && <PinButton day={day} pinned={dinner.pinned} week={weekRaw} />}
                 </div>
                 {dinner ? (
                   <>
@@ -243,7 +252,7 @@ export default async function PlanPage({
                       <summary className="cursor-pointer text-xs text-soft hover:text-bottle">more</summary>
                       <div className="mt-1.5 space-y-2 text-sm">
                         <DinnerBody dinner={dinner} personName={personName} />
-                        <SwapButtons day={day} cuisine={dinner.recipe.cuisine} />
+                        <SwapButtons day={day} cuisine={dinner.recipe.cuisine} week={weekRaw} />
                       </div>
                     </details>
                   </>
