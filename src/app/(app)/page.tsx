@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getDb } from '@/lib/db';
-import { currentWeekStart, DAY_NAMES, resolveWeekStart } from '@/lib/services/dates';
+import { DAY_NAMES, resolveWeekStart } from '@/lib/services/dates';
 import { getWeek } from '@/lib/services/planning';
 import { planMyWeek, swapDayAction, togglePinAction } from '@/app/actions/plan';
 import { standoutTags } from '@/lib/macro/equipment';

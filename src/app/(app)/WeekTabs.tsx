@@ -6,8 +6,8 @@ export function WeekTabs({ basePath, isNext }: { basePath: string; isNext: boole
     `eyebrow pb-0.5 ${active ? 'border-b-2 border-dijon text-ink' : 'hover:text-ink'}`;
   return (
     <nav aria-label="Week" className="flex gap-4">
-      <Link href={basePath} className={tab(!isNext)}>This week</Link>
-      <Link href={`${basePath}?week=next`} className={tab(isNext)}>Next week</Link>
+      <Link href={basePath} aria-current={!isNext ? 'page' : undefined} className={tab(!isNext)}>This week</Link>
+      <Link href={`${basePath}?week=next`} aria-current={isNext ? 'page' : undefined} className={tab(isNext)}>Next week</Link>
     </nav>
   );
 }
