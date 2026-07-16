@@ -107,3 +107,17 @@ export async function removeItem(db: Db, listId: string, index: number) {
   const items = list.items.filter((_, i) => i !== index);
   await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, listId));
 }
+
+/**
+ * One-tap "this is a pantry staple": records the name and drops the item
+ * from the current list. Returns the removed item so the caller can offer undo.
+ */
+export async function markItemStaple(db: Db, listId: string, index: number) {
+  const [list] = await db.select().from(shoppingLists).where(eq(shoppingLists.id, listId));
+  const item = list?.items[index];
+  if (!list || !item) return null;
+  await db.insert(pantryStaples).values({ name: item.name }).onConflictDoNothing();
+  const items = list.items.filter((_, i) => i !== index);
+  await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, listId));
+  return item;
+}
