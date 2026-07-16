@@ -2,12 +2,13 @@
 
 import { revalidatePath } from 'next/cache';
 import { getDb } from '@/lib/db';
-import { currentWeekStart } from '@/lib/services/dates';
+import { resolveWeekStart } from '@/lib/services/dates';
 import { addItem, buildList, removeItem, toggleItem } from '@/lib/services/shopping';
 
 export async function buildListAction(formData: FormData) {
   const low = formData.getAll('lowStaple').map(String);
-  await buildList(getDb(), currentWeekStart(), low);
+  const raw = formData.get('week');
+  await buildList(getDb(), resolveWeekStart(typeof raw === 'string' ? raw : undefined), low);
   revalidatePath('/shopping');
 }
 

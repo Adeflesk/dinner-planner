@@ -61,3 +61,8 @@ appliance-aware feature is dormant — tick the Miele gear.
   two `basmati rice` lines because one recipe measured in gram and another in
   a unit the canon can't convert (e.g. cup). Adding per-ingredient cup→g
   factors for rice/flour-like staples would merge these.
+- **Harden the week-isolation test** (from the two-week-window final review):
+  in `planning.test.ts`'s "two-week window" test, tighten `dinners.length > 7`
+  to exact per-week counts, and give the fake generator per-week-distinct
+  ingredients so a lost `weekPlanId` filter in `weekScaledRecipes` would be
+  caught by list-content assertions (today only row-ids are compared).

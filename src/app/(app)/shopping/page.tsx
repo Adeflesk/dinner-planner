@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { getDb } from '@/lib/db';
-import { currentWeekStart } from '@/lib/services/dates';
+import { resolveWeekStart } from '@/lib/services/dates';
 import { getList, staplesCheck, weekHasDinners } from '@/lib/services/shopping';
 import { SECTION_ORDER } from '@/lib/macro/aggregate';
 import { addItemAction, buildListAction, removeItemAction, toggleItemAction } from '@/app/actions/shopping';
+import { WeekTabs } from '../WeekTabs';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,9 +14,16 @@ const SECTION_LABEL: Record<string, string> = {
 };
 const fmtQty = (n: number) => (Number.isInteger(n) ? n : Math.round(n * 100) / 100);
 
-export default async function ShoppingPage() {
+export default async function ShoppingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ week?: string }>;
+}) {
+  const { week: weekParam } = await searchParams;
+  const isNext = weekParam === 'next';
+  const weekRaw = isNext ? 'next' : '';
   const db = getDb();
-  const weekStart = currentWeekStart();
+  const weekStart = resolveWeekStart(isNext ? 'next' : undefined);
   const list = await getList(db, weekStart);
 
   if (!list) {
@@ -23,9 +31,13 @@ export default async function ShoppingPage() {
     if (!(await weekHasDinners(db, weekStart))) {
       return (
         <main className="mx-auto w-full max-w-lg space-y-4">
-          <h1 className="font-display text-[27px]">Shopping list</h1>
+          <div>
+            <h1 className="font-display text-[27px]">Shopping list</h1>
+            <p className="eyebrow mt-1">Week of {weekStart}</p>
+            <div className="mt-2.5"><WeekTabs basePath="/shopping" isNext={isNext} /></div>
+          </div>
           <p className="card p-4 text-sm">
-            No dinners planned yet — <Link href="/" className="text-bottle underline underline-offset-3">plan your week first</Link>,
+            No dinners planned yet — <Link href={isNext ? '/?week=next' : '/'} className="text-bottle underline underline-offset-3">plan your week first</Link>,
             then build the list from it.
           </p>
         </main>
@@ -37,8 +49,10 @@ export default async function ShoppingPage() {
         <div>
           <h1 className="font-display text-[27px]">Shopping list</h1>
           <p className="eyebrow mt-1">Week of {weekStart}</p>
+          <div className="mt-2.5"><WeekTabs basePath="/shopping" isNext={isNext} /></div>
         </div>
         <form action={buildListAction} className="card space-y-4 border-t-[3px] border-t-bottle p-5 text-sm">
+          <input type="hidden" name="week" value={weekRaw} />
           {used.length > 0 ? (
             <>
               <p className="font-medium">This week&apos;s dinners use these staples — tick any you&apos;re running low on:</p>
@@ -73,8 +87,10 @@ export default async function ShoppingPage() {
           <p className="eyebrow mt-1">
             Week of {weekStart} · <span className="text-bottle">{remaining} to get</span>
           </p>
+          <div className="mt-2.5"><WeekTabs basePath="/shopping" isNext={isNext} /></div>
         </div>
         <form action={buildListAction}>
+          <input type="hidden" name="week" value={weekRaw} />
           <button className="btn btn-ghost">Rebuild</button>
         </form>
       </div>
