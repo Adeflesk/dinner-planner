@@ -3,7 +3,7 @@ import type { Db } from '@/lib/db';
 import {
   pantryStaples, plannedDinners, recipes, shoppingLists, weekPlans, type StoredShoppingItem,
 } from '@/lib/db/schema';
-import { aggregateIngredients, staplesUsed, type ScaledRecipe } from '@/lib/macro/aggregate';
+import { aggregateIngredients, staplesUsed, SECTION_ORDER, type ScaledRecipe } from '@/lib/macro/aggregate';
 import { canonicalName } from '@/lib/macro/canon';
 
 async function weekScaledRecipes(db: Db, weekStart: string): Promise<ScaledRecipe[]> {
@@ -146,6 +146,7 @@ export function decodeStapleUndo(raw: string): StapleUndo | null {
       || typeof parsed.item.quantity !== 'number'
       || typeof parsed.item.unit !== 'string'
       || typeof parsed.item.section !== 'string'
+      || !(SECTION_ORDER as readonly string[]).includes(parsed.item.section)
       || typeof parsed.item.checked !== 'boolean'
       || typeof parsed.item.manual !== 'boolean'
     ) return null;

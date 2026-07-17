@@ -251,4 +251,13 @@ describe('staple undo codec', () => {
     expect(decodeStapleUndo(Buffer.from('{"nope":1}').toString('base64url'))).toBeNull();
     expect(decodeStapleUndo('')).toBeNull();
   });
+
+  it('returns null for out-of-enum section', () => {
+    const payload = {
+      name: 'ketchup',
+      item: { name: 'ketchup', quantity: 1, unit: 'bottle', section: 'snacks' as never, checked: false, manual: false },
+    };
+    const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    expect(decodeStapleUndo(encoded)).toBeNull();
+  });
 });
