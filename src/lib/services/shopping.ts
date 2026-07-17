@@ -121,3 +121,36 @@ export async function markItemStaple(db: Db, listId: string, index: number) {
   await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, listId));
   return item;
 }
+
+/** Reverses markItemStaple: forgets the staple and puts the item back. */
+export async function undoMarkStaple(db: Db, listId: string, name: string, item: StoredShoppingItem) {
+  await db.delete(pantryStaples).where(eq(pantryStaples.name, name));
+  const [list] = await db.select().from(shoppingLists).where(eq(shoppingLists.id, listId));
+  if (!list) return;
+  await db.update(shoppingLists).set({ items: [...list.items, item] }).where(eq(shoppingLists.id, listId));
+}
+
+/** Undo state carried in the ?undo= search param — same-visit affordance, not durable. */
+export type StapleUndo = { name: string; item: StoredShoppingItem };
+
+export function encodeStapleUndo(undo: StapleUndo): string {
+  return Buffer.from(JSON.stringify(undo), 'utf8').toString('base64url');
+}
+
+export function decodeStapleUndo(raw: string): StapleUndo | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+    if (
+      typeof parsed?.name !== 'string'
+      || typeof parsed?.item?.name !== 'string'
+      || typeof parsed.item.quantity !== 'number'
+      || typeof parsed.item.unit !== 'string'
+      || typeof parsed.item.section !== 'string'
+      || typeof parsed.item.checked !== 'boolean'
+      || typeof parsed.item.manual !== 'boolean'
+    ) return null;
+    return parsed as StapleUndo;
+  } catch {
+    return null;
+  }
+}
