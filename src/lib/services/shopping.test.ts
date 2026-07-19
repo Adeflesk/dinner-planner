@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/lib/test/db';
 import type { Db } from '@/lib/db';
 import { pantryStaples, plannedDinners, recipes, shoppingLists, weekPlans } from '@/lib/db/schema';
-import { addItem, buildList, markItemStaple, toggleItem, weekHasDinners, undoMarkStaple, encodeStapleUndo, decodeStapleUndo } from './shopping';
+import { addItem, buildList, markItemStaple, toggleItem, weekHasDinners, undoMarkStaple, encodeStapleUndo, decodeStapleUndo, stapleNameSet } from './shopping';
 
 const WEEK = '2026-06-29';
 
@@ -259,5 +259,16 @@ describe('staple undo codec', () => {
     };
     const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
     expect(decodeStapleUndo(encoded)).toBeNull();
+  });
+});
+
+describe('stapleNameSet', () => {
+  it('returns canonical staple names', async () => {
+    const db = await createTestDb();
+    await db.insert(pantryStaples).values([{ name: 'scallion' }, { name: 'Olive Oil' }]);
+    const set = await stapleNameSet(db);
+    expect(set.has('green onion')).toBe(true); // scallion canonicalizes
+    expect(set.has('olive oil')).toBe(true);
+    expect(set.has('chicken breast')).toBe(false);
   });
 });

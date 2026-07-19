@@ -155,3 +155,9 @@ export function decodeStapleUndo(raw: string): StapleUndo | null {
     return null;
   }
 }
+
+/** Canonical names of all staples — the list UI hides the mark-as-staple button for these. */
+export async function stapleNameSet(db: Db): Promise<Set<string>> {
+  const staples = await db.select().from(pantryStaples);
+  return new Set(staples.map((s) => canonicalName(s.name)));
+}
