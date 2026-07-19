@@ -1,9 +1,13 @@
 import Link from 'next/link';
 import { getDb } from '@/lib/db';
 import { resolveWeekStart } from '@/lib/services/dates';
-import { getList, staplesCheck, weekHasDinners } from '@/lib/services/shopping';
+import { decodeStapleUndo, getList, stapleNameSet, staplesCheck, weekHasDinners } from '@/lib/services/shopping';
 import { SECTION_ORDER } from '@/lib/macro/aggregate';
-import { addItemAction, buildListAction, removeItemAction, toggleItemAction } from '@/app/actions/shopping';
+import { canonicalName } from '@/lib/macro/canon';
+import {
+  addItemAction, buildListAction, markStapleAction, removeItemAction,
+  toggleItemAction, undoStapleAction,
+} from '@/app/actions/shopping';
 import { WeekTabs } from '../WeekTabs';
 
 export const dynamic = 'force-dynamic';
@@ -17,9 +21,9 @@ const fmtQty = (n: number) => (Number.isInteger(n) ? n : Math.round(n * 100) / 1
 export default async function ShoppingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; undo?: string }>;
 }) {
-  const { week: weekParam } = await searchParams;
+  const { week: weekParam, undo: undoParam } = await searchParams;
   const isNext = weekParam === 'next';
   const weekRaw = isNext ? 'next' : '';
   const db = getDb();
@@ -79,6 +83,8 @@ export default async function ShoppingPage({
 
   const sections = SECTION_ORDER.filter((s) => list.items.some((i) => i.section === s));
   const remaining = list.items.filter((i) => !i.checked).length;
+  const stapleSet = await stapleNameSet(db);
+  const undo = undoParam ? decodeStapleUndo(undoParam) : null;
   return (
     <main className="mx-auto w-full max-w-lg space-y-5">
       <div className="flex items-end justify-between gap-3">
@@ -94,6 +100,20 @@ export default async function ShoppingPage({
           <button className="btn btn-ghost">Rebuild</button>
         </form>
       </div>
+
+      {undo && (
+        <div className="card flex items-center gap-3 border-l-[3px] border-l-bottle p-4 text-sm">
+          <p className="flex-1">
+            Marked <strong>{undo.name}</strong> as a pantry staple — it won&apos;t appear on future lists.
+          </p>
+          <form action={undoStapleAction}>
+            <input type="hidden" name="listId" value={list.id} />
+            <input type="hidden" name="week" value={weekRaw} />
+            <input type="hidden" name="undo" value={undoParam} />
+            <button className="btn btn-ghost">Undo</button>
+          </form>
+        </div>
+      )}
 
       {sections.map((section) => (
         <section key={section} className="card overflow-hidden">
@@ -125,16 +145,32 @@ export default async function ShoppingPage({
                     {item.name}
                     {item.manual && <em className="text-soft"> · added</em>}
                   </span>
-                  <form action={removeItemAction} className="ml-auto">
-                    <input type="hidden" name="listId" value={list.id} />
-                    <input type="hidden" name="index" value={index} />
-                    <button
-                      aria-label={`Remove ${item.name}`}
-                      className="grid h-8 w-8 -m-1.5 place-content-center text-soft hover:text-tomato"
-                    >
-                      ×
-                    </button>
-                  </form>
+                  <div className="ml-auto flex items-center gap-1">
+                    {!stapleSet.has(canonicalName(item.name)) && (
+                      <form action={markStapleAction} className="flex">
+                        <input type="hidden" name="listId" value={list.id} />
+                        <input type="hidden" name="index" value={index} />
+                        <input type="hidden" name="week" value={weekRaw} />
+                        <button
+                          aria-label={`Mark ${item.name} as a pantry staple`}
+                          title={`Mark ${item.name} as a pantry staple`}
+                          className="grid h-8 w-8 -m-1.5 place-content-center text-soft hover:text-bottle"
+                        >
+                          ⌂
+                        </button>
+                      </form>
+                    )}
+                    <form action={removeItemAction} className="flex">
+                      <input type="hidden" name="listId" value={list.id} />
+                      <input type="hidden" name="index" value={index} />
+                      <button
+                        aria-label={`Remove ${item.name}`}
+                        className="grid h-8 w-8 -m-1.5 place-content-center text-soft hover:text-tomato"
+                      >
+                        ×
+                      </button>
+                    </form>
+                  </div>
                 </li>
               ),
             )}

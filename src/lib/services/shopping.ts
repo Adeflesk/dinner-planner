@@ -3,7 +3,7 @@ import type { Db } from '@/lib/db';
 import {
   pantryStaples, plannedDinners, recipes, shoppingLists, weekPlans, type StoredShoppingItem,
 } from '@/lib/db/schema';
-import { aggregateIngredients, staplesUsed, type ScaledRecipe } from '@/lib/macro/aggregate';
+import { aggregateIngredients, staplesUsed, SECTION_ORDER, type ScaledRecipe } from '@/lib/macro/aggregate';
 import { canonicalName } from '@/lib/macro/canon';
 
 async function weekScaledRecipes(db: Db, weekStart: string): Promise<ScaledRecipe[]> {
@@ -106,4 +106,58 @@ export async function removeItem(db: Db, listId: string, index: number) {
   if (!list) return;
   const items = list.items.filter((_, i) => i !== index);
   await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, listId));
+}
+
+/**
+ * One-tap "this is a pantry staple": records the name and drops the item
+ * from the current list. Returns the removed item so the caller can offer undo.
+ */
+export async function markItemStaple(db: Db, listId: string, index: number) {
+  const [list] = await db.select().from(shoppingLists).where(eq(shoppingLists.id, listId));
+  const item = list?.items[index];
+  if (!list || !item) return null;
+  await db.insert(pantryStaples).values({ name: item.name }).onConflictDoNothing();
+  const items = list.items.filter((_, i) => i !== index);
+  await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, listId));
+  return item;
+}
+
+/** Reverses markItemStaple: forgets the staple and puts the item back. */
+export async function undoMarkStaple(db: Db, listId: string, name: string, item: StoredShoppingItem) {
+  await db.delete(pantryStaples).where(eq(pantryStaples.name, name));
+  const [list] = await db.select().from(shoppingLists).where(eq(shoppingLists.id, listId));
+  if (!list) return;
+  await db.update(shoppingLists).set({ items: [...list.items, item] }).where(eq(shoppingLists.id, listId));
+}
+
+/** Undo state carried in the ?undo= search param — same-visit affordance, not durable. */
+export type StapleUndo = { name: string; item: StoredShoppingItem };
+
+export function encodeStapleUndo(undo: StapleUndo): string {
+  return Buffer.from(JSON.stringify(undo), 'utf8').toString('base64url');
+}
+
+export function decodeStapleUndo(raw: string): StapleUndo | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+    if (
+      typeof parsed?.name !== 'string'
+      || typeof parsed?.item?.name !== 'string'
+      || typeof parsed.item.quantity !== 'number'
+      || typeof parsed.item.unit !== 'string'
+      || typeof parsed.item.section !== 'string'
+      || !(SECTION_ORDER as readonly string[]).includes(parsed.item.section)
+      || typeof parsed.item.checked !== 'boolean'
+      || typeof parsed.item.manual !== 'boolean'
+    ) return null;
+    return parsed as StapleUndo;
+  } catch {
+    return null;
+  }
+}
+
+/** Canonical names of all staples — the list UI hides the mark-as-staple button for these. */
+export async function stapleNameSet(db: Db): Promise<Set<string>> {
+  const staples = await db.select().from(pantryStaples);
+  return new Set(staples.map((s) => canonicalName(s.name)));
 }

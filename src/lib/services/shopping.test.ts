@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/lib/test/db';
 import type { Db } from '@/lib/db';
-import { pantryStaples, plannedDinners, recipes, weekPlans } from '@/lib/db/schema';
-import { addItem, buildList, toggleItem, weekHasDinners } from './shopping';
+import { pantryStaples, plannedDinners, recipes, shoppingLists, weekPlans } from '@/lib/db/schema';
+import { addItem, buildList, markItemStaple, toggleItem, weekHasDinners, undoMarkStaple, encodeStapleUndo, decodeStapleUndo, stapleNameSet } from './shopping';
 
 const WEEK = '2026-06-29';
 
@@ -124,5 +124,151 @@ describe('buildList rebuild behaviour', () => {
     }).where(eq(recipes.id, recipe.id));
     const rebuilt = (await buildList(db, WEEK, []))!;
     expect(rebuilt.items.map((i) => i.name.toLowerCase())).not.toContain('olive oil');
+  });
+});
+
+describe('markItemStaple', () => {
+  it('inserts the staple, removes exactly that item, and returns it', async () => {
+    const db = await createTestDb();
+    await seedWeek(db);
+    const list = (await buildList(db, WEEK, []))!;
+    const idx = list.items.findIndex((i) => i.name === 'chicken breast');
+
+    const removed = await markItemStaple(db, list.id, idx);
+
+    expect(removed?.name).toBe('chicken breast');
+    const staples = await db.select().from(pantryStaples);
+    expect(staples.map((s) => s.name)).toContain('chicken breast');
+    const [after] = await db.select().from(shoppingLists).where(eq(shoppingLists.id, list.id));
+    expect(after.items.map((i) => i.name)).not.toContain('chicken breast');
+    expect(after.items).toHaveLength(list.items.length - 1);
+  });
+
+  it('a subsequent buildList excludes the marked ingredient from derived items', async () => {
+    const db = await createTestDb();
+    await seedWeek(db);
+    const list = (await buildList(db, WEEK, []))!;
+    const idx = list.items.findIndex((i) => i.name === 'chicken breast');
+    await markItemStaple(db, list.id, idx);
+
+    const rebuilt = (await buildList(db, WEEK, []))!;
+    expect(rebuilt.items.map((i) => i.name)).not.toContain('chicken breast');
+  });
+
+  it('marking an item whose name is already a staple removes it without error', async () => {
+    const db = await createTestDb();
+    await seedWeek(db);
+    // olive oil is already a staple; ticking it low puts it on the list.
+    const list = (await buildList(db, WEEK, ['olive oil']))!;
+    const idx = list.items.findIndex((i) => i.name.toLowerCase() === 'olive oil');
+    expect(idx).toBeGreaterThanOrEqual(0);
+
+    const removed = await markItemStaple(db, list.id, idx);
+
+    expect(removed?.name.toLowerCase()).toBe('olive oil');
+    const staples = await db.select().from(pantryStaples);
+    expect(staples.filter((s) => s.name.toLowerCase() === 'olive oil')).toHaveLength(1);
+    const [after] = await db.select().from(shoppingLists).where(eq(shoppingLists.id, list.id));
+    expect(after.items.map((i) => i.name.toLowerCase())).not.toContain('olive oil');
+  });
+
+  it('out-of-range index and unknown list id leave everything unchanged', async () => {
+    const db = await createTestDb();
+    await seedWeek(db);
+    const list = (await buildList(db, WEEK, []))!;
+
+    expect(await markItemStaple(db, list.id, 99)).toBeNull();
+    expect(await markItemStaple(db, '00000000-0000-0000-0000-000000000000', 0)).toBeNull();
+
+    const [after] = await db.select().from(shoppingLists).where(eq(shoppingLists.id, list.id));
+    expect(after.items).toEqual(list.items);
+    const staples = await db.select().from(pantryStaples);
+    expect(staples).toHaveLength(1); // only the seeded olive oil
+  });
+});
+
+describe('undoMarkStaple', () => {
+  it('restores the item with manual and checked preserved, and deletes the staple', async () => {
+    const db = await createTestDb();
+    await seedWeek(db);
+    const list = (await buildList(db, WEEK, []))!;
+    await addItem(db, list.id, 'ketchup');
+    let [state] = await db.select().from(shoppingLists).where(eq(shoppingLists.id, list.id));
+    const idx = state.items.findIndex((i) => i.name === 'ketchup');
+    await toggleItem(db, list.id, idx); // checked: true
+    const removed = (await markItemStaple(db, list.id, idx))!;
+
+    await undoMarkStaple(db, list.id, removed.name, removed);
+
+    [state] = await db.select().from(shoppingLists).where(eq(shoppingLists.id, list.id));
+    const ketchup = state.items.find((i) => i.name === 'ketchup');
+    expect(ketchup).toMatchObject({ manual: true, checked: true });
+    const staples = await db.select().from(pantryStaples);
+    expect(staples.map((s) => s.name)).not.toContain('ketchup');
+  });
+
+  it('a buildList after undo derives the ingredient again', async () => {
+    const db = await createTestDb();
+    await seedWeek(db);
+    const list = (await buildList(db, WEEK, []))!;
+    const idx = list.items.findIndex((i) => i.name === 'chicken breast');
+    const removed = (await markItemStaple(db, list.id, idx))!;
+
+    await undoMarkStaple(db, list.id, removed.name, removed);
+
+    const rebuilt = (await buildList(db, WEEK, []))!;
+    expect(rebuilt.items.map((i) => i.name)).toContain('chicken breast');
+  });
+
+  it('no-ops independently when the staple or list is already gone', async () => {
+    const db = await createTestDb();
+    await seedWeek(db);
+    const list = (await buildList(db, WEEK, []))!;
+    const item = list.items[0];
+
+    // Unknown list: staple deletion still runs, list append no-ops, no throw.
+    await undoMarkStaple(db, '00000000-0000-0000-0000-000000000000', 'olive oil', item);
+    expect((await db.select().from(pantryStaples)).map((s) => s.name)).not.toContain('olive oil');
+
+    // Staple already gone: item is still appended, no throw.
+    await undoMarkStaple(db, list.id, 'olive oil', item);
+    const [after] = await db.select().from(shoppingLists).where(eq(shoppingLists.id, list.id));
+    expect(after.items).toHaveLength(list.items.length + 1);
+  });
+});
+
+describe('staple undo codec', () => {
+  it('round-trips a payload', () => {
+    const undo = {
+      name: 'chicken breast',
+      item: { name: 'chicken breast', quantity: 500, unit: 'g', section: 'meat_fish' as const, checked: true, manual: false },
+    };
+    expect(decodeStapleUndo(encodeStapleUndo(undo))).toEqual(undo);
+  });
+
+  it('returns null for garbage, valid-JSON-wrong-shape, and empty input', () => {
+    expect(decodeStapleUndo('not-base64-json')).toBeNull();
+    expect(decodeStapleUndo(Buffer.from('{"nope":1}').toString('base64url'))).toBeNull();
+    expect(decodeStapleUndo('')).toBeNull();
+  });
+
+  it('returns null for out-of-enum section', () => {
+    const payload = {
+      name: 'ketchup',
+      item: { name: 'ketchup', quantity: 1, unit: 'bottle', section: 'snacks' as never, checked: false, manual: false },
+    };
+    const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    expect(decodeStapleUndo(encoded)).toBeNull();
+  });
+});
+
+describe('stapleNameSet', () => {
+  it('returns canonical staple names', async () => {
+    const db = await createTestDb();
+    await db.insert(pantryStaples).values([{ name: 'scallion' }, { name: 'Olive Oil' }]);
+    const set = await stapleNameSet(db);
+    expect(set.has('green onion')).toBe(true); // scallion canonicalizes
+    expect(set.has('olive oil')).toBe(true);
+    expect(set.has('chicken breast')).toBe(false);
   });
 });
