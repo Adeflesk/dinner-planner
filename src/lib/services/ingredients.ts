@@ -12,3 +12,8 @@ export function parseIngredientLines(text: string): Ingredient[] {
       return { name: line, quantity: 1, unit: 'pcs', section: 'other' as const };
     });
 }
+
+/** Inverse of parseIngredientLines: "{quantity} {unit} {name}" per line, for prefilling edit forms. */
+export function formatIngredientLines(ingredients: Ingredient[]): string {
+  return ingredients.map((i) => `${i.quantity} ${i.unit} ${i.name}`).join('\n');
+}
