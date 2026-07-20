@@ -4,6 +4,8 @@ import { recipes } from '@/lib/db/schema';
 import type { Ingredient, MacroSet } from '@/lib/macro/types';
 import { canonicalName } from '@/lib/macro/canon';
 import { parseIngredientLines } from './ingredients';
+import { aiEstimator, estimateRecipe, type Estimator } from '@/lib/ai/recipes';
+import { CAPABILITIES, type Capability } from '@/lib/macro/equipment';
 
 export type RecipeEditInput = {
   name: string;
@@ -25,20 +27,41 @@ function carrySections(parsed: Ingredient[], previous: Ingredient[]): Ingredient
 }
 
 /** Update a recipe in place. `source` and `createdAt` are never touched. */
-export async function updateRecipe(db: Db, id: string, input: RecipeEditInput): Promise<void> {
+export async function updateRecipe(
+  db: Db,
+  id: string,
+  input: RecipeEditInput,
+  est: Estimator = aiEstimator,
+): Promise<void> {
   const [existing] = await db.select().from(recipes).where(eq(recipes.id, id));
   if (!existing) return;
 
-  const ingredients = carrySections(parseIngredientLines(input.ingredientLines), existing.ingredients);
+  let perServing = input.perServing;
+  let ingredients = carrySections(parseIngredientLines(input.ingredientLines), existing.ingredients);
+  let equipment = input.equipment;
+
+  if (input.useAi) {
+    const estimate = await estimateRecipe(
+      { name: input.name, servings: input.servings, ingredientLines: input.ingredientLines },
+      est,
+    );
+    if (estimate) {
+      perServing = estimate.perServing;
+      ingredients = estimate.ingredients;
+      const valid = estimate.equipment.filter((e): e is Capability => (CAPABILITIES as readonly string[]).includes(e));
+      if (valid.length > 0) equipment = valid;
+    }
+    // AI down — fall back to what was typed, never block saving
+  }
 
   await db.update(recipes).set({
     name: input.name,
     cuisine: input.cuisine,
     method: input.method,
     servings: input.servings,
-    perServing: input.perServing,
+    perServing,
     tags: input.tags,
-    equipment: input.equipment,
+    equipment,
     ingredients,
   }).where(eq(recipes.id, id));
 }

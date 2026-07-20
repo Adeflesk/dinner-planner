@@ -4,6 +4,7 @@ import { createTestDb } from '@/lib/test/db';
 import type { Db } from '@/lib/db';
 import { recipes } from '@/lib/db/schema';
 import { updateRecipe, type RecipeEditInput } from './recipes';
+import type { Estimator } from '@/lib/ai/recipes';
 
 /** A stored family recipe whose ingredients carry real store sections. */
 async function seedRecipe(db: Db) {
@@ -85,5 +86,43 @@ describe('updateRecipe', () => {
     await updateRecipe(db, '00000000-0000-0000-0000-000000000000', { ...baseInput(), name: 'X' });
     const [row] = await db.select().from(recipes).where(eq(recipes.id, seeded.id));
     expect(row.name).toBe('Roast chicken');
+  });
+});
+
+// kcal = 4*45 + 4*30 + 9*18 = 462 — satisfies the energyConsistent gate.
+const fakeEstimator: Estimator = async () => ({
+  perServing: { kcal: 462, protein: 45, carbs: 30, fat: 18 },
+  equipment: ['steam'],
+  ingredients: [{ name: 'salmon', quantity: 400, unit: 'g', section: 'meat_fish' as const }],
+});
+
+const failingEstimator: Estimator = async () => { throw new Error('AI down'); };
+
+describe('updateRecipe with AI estimation', () => {
+  it('AI estimate overrides typed macros, ingredients and equipment', async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    await updateRecipe(db, seeded.id, { ...baseInput(), useAi: true }, fakeEstimator);
+    const [updated] = await db.select().from(recipes).where(eq(recipes.id, seeded.id));
+    expect(updated.perServing).toEqual({ kcal: 462, protein: 45, carbs: 30, fat: 18 });
+    expect(updated.ingredients).toEqual([
+      { name: 'salmon', quantity: 400, unit: 'g', section: 'meat_fish' },
+    ]);
+    expect(updated.equipment).toEqual(['steam']);
+  });
+
+  it('falls back to typed values when AI fails — the edit still saves', async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    await updateRecipe(
+      db, seeded.id,
+      { ...baseInput(), name: 'Renamed anyway', ingredientLines: '400 g chicken breast', useAi: true },
+      failingEstimator,
+    );
+    const [updated] = await db.select().from(recipes).where(eq(recipes.id, seeded.id));
+    expect(updated.name).toBe('Renamed anyway');
+    expect(updated.ingredients).toEqual([
+      { name: 'chicken breast', quantity: 400, unit: 'g', section: 'meat_fish' },
+    ]);
   });
 });
