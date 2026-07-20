@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import type { Db } from '@/lib/db';
 import { plannedDinners, recipes, shoppingLists, weekPlans } from '@/lib/db/schema';
 import type { Ingredient, MacroSet } from '@/lib/macro/types';
@@ -89,4 +89,20 @@ export async function updateRecipe(
         .where(inArray(shoppingLists.weekPlanId, affected.map((a) => a.weekPlanId)));
     }
   }
+}
+
+export type RecipeHistoryEntry = { weekStart: string; day: number; cookedOn: string };
+
+/** Every planned occurrence of a recipe, newest first. cookedOn = weekStart + day (UTC). */
+export async function recipeHistory(db: Db, recipeId: string): Promise<RecipeHistoryEntry[]> {
+  const rows = await db.select({ weekStart: weekPlans.weekStart, day: plannedDinners.day })
+    .from(plannedDinners)
+    .innerJoin(weekPlans, eq(plannedDinners.weekPlanId, weekPlans.id))
+    .where(eq(plannedDinners.recipeId, recipeId))
+    .orderBy(desc(weekPlans.weekStart), desc(plannedDinners.day));
+  return rows.map((r) => {
+    const d = new Date(`${r.weekStart}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + r.day);
+    return { ...r, cookedOn: d.toISOString().slice(0, 10) };
+  });
 }

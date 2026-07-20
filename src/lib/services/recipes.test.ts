@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/lib/test/db';
 import type { Db } from '@/lib/db';
 import { plannedDinners, recipes, shoppingLists, weekPlans } from '@/lib/db/schema';
-import { updateRecipe, type RecipeEditInput } from './recipes';
+import { updateRecipe, recipeHistory, type RecipeEditInput } from './recipes';
 import type { Estimator } from '@/lib/ai/recipes';
 
 /** A stored family recipe whose ingredients carry real store sections. */
@@ -189,5 +189,29 @@ describe('updateRecipe shopping-list invalidation', () => {
       perServing: { kcal: 600, protein: 42, carbs: 58, fat: 22 },
     }, undefined, NOW);
     expect(await listExists(db, currentList)).toBe(true);
+  });
+});
+
+describe('recipeHistory', () => {
+  it('returns occurrences newest first with the cooked date computed from weekStart + day', async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    // Thu (day 3) of week 2026-06-29 → 2026-07-02; Mon (day 0) of week 2026-07-13.
+    const [older] = await db.insert(weekPlans).values({ weekStart: '2026-06-29' }).returning();
+    const [newer] = await db.insert(weekPlans).values({ weekStart: '2026-07-13' }).returning();
+    await db.insert(plannedDinners).values([
+      { weekPlanId: older.id, day: 3, recipeId: seeded.id, householdServings: 4, portions: [] },
+      { weekPlanId: newer.id, day: 0, recipeId: seeded.id, householdServings: 4, portions: [] },
+    ]);
+    expect(await recipeHistory(db, seeded.id)).toEqual([
+      { weekStart: '2026-07-13', day: 0, cookedOn: '2026-07-13' },
+      { weekStart: '2026-06-29', day: 3, cookedOn: '2026-07-02' },
+    ]);
+  });
+
+  it('is empty for a never-planned recipe', async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    expect(await recipeHistory(db, seeded.id)).toEqual([]);
   });
 });
