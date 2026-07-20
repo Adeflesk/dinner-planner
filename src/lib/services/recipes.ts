@@ -1,11 +1,12 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, gte, inArray } from 'drizzle-orm';
 import type { Db } from '@/lib/db';
-import { recipes } from '@/lib/db/schema';
+import { plannedDinners, recipes, shoppingLists, weekPlans } from '@/lib/db/schema';
 import type { Ingredient, MacroSet } from '@/lib/macro/types';
 import { canonicalName } from '@/lib/macro/canon';
 import { parseIngredientLines } from './ingredients';
 import { aiEstimator, estimateRecipe, type Estimator } from '@/lib/ai/recipes';
 import { CAPABILITIES, type Capability } from '@/lib/macro/equipment';
+import { currentWeekStart } from './dates';
 
 export type RecipeEditInput = {
   name: string;
@@ -32,6 +33,7 @@ export async function updateRecipe(
   id: string,
   input: RecipeEditInput,
   est: Estimator = aiEstimator,
+  now: Date = new Date(),
 ): Promise<void> {
   const [existing] = await db.select().from(recipes).where(eq(recipes.id, id));
   if (!existing) return;
@@ -54,6 +56,9 @@ export async function updateRecipe(
     // AI down — fall back to what was typed, never block saving
   }
 
+  const listsStale = input.servings !== existing.servings
+    || JSON.stringify(ingredients) !== JSON.stringify(existing.ingredients);
+
   await db.update(recipes).set({
     name: input.name,
     cuisine: input.cuisine,
@@ -64,4 +69,16 @@ export async function updateRecipe(
     equipment,
     ingredients,
   }).where(eq(recipes.id, id));
+
+  if (listsStale) {
+    // Same invalidation a re-plan performs, but only for weeks that still lie ahead.
+    const affected = await db.select({ weekPlanId: plannedDinners.weekPlanId })
+      .from(plannedDinners)
+      .innerJoin(weekPlans, eq(plannedDinners.weekPlanId, weekPlans.id))
+      .where(and(eq(plannedDinners.recipeId, id), gte(weekPlans.weekStart, currentWeekStart(now))));
+    if (affected.length > 0) {
+      await db.delete(shoppingLists)
+        .where(inArray(shoppingLists.weekPlanId, affected.map((a) => a.weekPlanId)));
+    }
+  }
 }

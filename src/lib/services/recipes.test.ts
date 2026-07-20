@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/lib/test/db';
 import type { Db } from '@/lib/db';
-import { recipes } from '@/lib/db/schema';
+import { plannedDinners, recipes, shoppingLists, weekPlans } from '@/lib/db/schema';
 import { updateRecipe, type RecipeEditInput } from './recipes';
 import type { Estimator } from '@/lib/ai/recipes';
 
@@ -124,5 +124,70 @@ describe('updateRecipe with AI estimation', () => {
     expect(updated.ingredients).toEqual([
       { name: 'chicken breast', quantity: 400, unit: 'g', section: 'meat_fish' },
     ]);
+  });
+});
+
+// 2026-07-16 is a Thursday; its week's Monday is 2026-07-13.
+const NOW = new Date('2026-07-16T12:00:00Z');
+const PAST_WEEK = '2026-06-29';
+const CURRENT_WEEK = '2026-07-13';
+
+/** Plan `recipeId` in `weekStart` and give that week a shopping list. Returns the list id. */
+async function seedPlannedWeek(db: Db, weekStart: string, recipeId: string) {
+  const [plan] = await db.insert(weekPlans).values({ weekStart }).returning();
+  await db.insert(plannedDinners).values({
+    weekPlanId: plan.id, day: 0, recipeId, householdServings: 4, portions: [],
+  });
+  const [list] = await db.insert(shoppingLists).values({
+    weekPlanId: plan.id,
+    items: [{ name: 'chicken breast', quantity: 500, unit: 'g', section: 'meat_fish', checked: false, manual: false }],
+  }).returning();
+  return list.id;
+}
+
+async function listExists(db: Db, listId: string) {
+  const [row] = await db.select().from(shoppingLists).where(eq(shoppingLists.id, listId));
+  return row !== undefined;
+}
+
+describe('updateRecipe shopping-list invalidation', () => {
+  it('an ingredient change deletes lists only for current/future weeks containing the recipe', async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    const other = await seedRecipe(db); // a second, unrelated recipe
+    const pastList = await seedPlannedWeek(db, PAST_WEEK, seeded.id);
+    const currentList = await seedPlannedWeek(db, CURRENT_WEEK, seeded.id);
+    const unrelatedList = await seedPlannedWeek(db, '2026-07-20', other.id);
+
+    await updateRecipe(db, seeded.id, {
+      ...baseInput(),
+      ingredientLines: '600 g chicken breast\n2 pcs green onion',
+    }, undefined, NOW);
+
+    expect(await listExists(db, pastList)).toBe(true);       // history untouched
+    expect(await listExists(db, currentList)).toBe(false);   // invalidated
+    expect(await listExists(db, unrelatedList)).toBe(true);  // other recipe's week untouched
+  });
+
+  it('a servings change also invalidates', async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    const currentList = await seedPlannedWeek(db, CURRENT_WEEK, seeded.id);
+    await updateRecipe(db, seeded.id, { ...baseInput(), servings: 6 }, undefined, NOW);
+    expect(await listExists(db, currentList)).toBe(false);
+  });
+
+  it('a cosmetic edit (name, tags, method, macros) deletes nothing', async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    const currentList = await seedPlannedWeek(db, CURRENT_WEEK, seeded.id);
+    await updateRecipe(db, seeded.id, {
+      ...baseInput(),
+      name: 'New name',
+      tags: ['renamed'],
+      method: 'Different words.',
+      perServing: { kcal: 600, protein: 42, carbs: 58, fat: 22 },
+    }, undefined, NOW);
+    expect(await listExists(db, currentList)).toBe(true);
   });
 });
