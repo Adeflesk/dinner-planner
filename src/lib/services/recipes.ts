@@ -27,6 +27,14 @@ function carrySections(parsed: Ingredient[], previous: Ingredient[]): Ingredient
   return parsed.map((i) => ({ ...i, section: sections.get(canonicalName(i.name)) ?? i.section }));
 }
 
+// Postgres jsonb doesn't preserve object key order on round-trip, so
+// JSON.stringify can spuriously report a change; compare fields directly.
+function ingredientsEqual(a: Ingredient[], b: Ingredient[]): boolean {
+  return a.length === b.length && a.every((item, i) =>
+    item.name === b[i].name && item.quantity === b[i].quantity
+    && item.unit === b[i].unit && item.section === b[i].section);
+}
+
 /** Update a recipe in place. `source` and `createdAt` are never touched. */
 export async function updateRecipe(
   db: Db,
@@ -57,7 +65,7 @@ export async function updateRecipe(
   }
 
   const listsStale = input.servings !== existing.servings
-    || JSON.stringify(ingredients) !== JSON.stringify(existing.ingredients);
+    || !ingredientsEqual(ingredients, existing.ingredients);
 
   await db.update(recipes).set({
     name: input.name,
