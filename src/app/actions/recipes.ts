@@ -1,11 +1,13 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { recipes } from '@/lib/db/schema';
 import { estimateRecipe } from '@/lib/ai/recipes';
 import { parseIngredientLines } from '@/lib/services/ingredients';
+import { updateRecipe } from '@/lib/services/recipes';
 import { CAPABILITIES, type Capability } from '@/lib/macro/equipment';
 
 export async function saveRecipe(formData: FormData) {
@@ -64,4 +66,29 @@ export async function promoteToFavourite(formData: FormData) {
   await getDb().update(recipes).set({ source: 'family' })
     .where(eq(recipes.id, String(formData.get('id'))));
   revalidatePath('/recipes');
+}
+
+export async function updateRecipeAction(formData: FormData) {
+  const id = String(formData.get('id'));
+  await updateRecipe(getDb(), id, {
+    name: String(formData.get('name')),
+    cuisine: String(formData.get('cuisine')) || 'any',
+    servings: Number(formData.get('servings')) || 4,
+    ingredientLines: String(formData.get('ingredients')),
+    method: String(formData.get('method') ?? ''),
+    tags: String(formData.get('tags') ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    perServing: {
+      kcal: Number(formData.get('kcal')) || 0,
+      protein: Number(formData.get('protein')) || 0,
+      carbs: Number(formData.get('carbs')) || 0,
+      fat: Number(formData.get('fat')) || 0,
+    },
+    equipment: formData.getAll('equipment').map(String),
+    useAi: formData.get('estimateWithAi') === 'on',
+  });
+  revalidatePath('/recipes');
+  revalidatePath(`/recipes/${id}`);
+  revalidatePath('/shopping');
+  revalidatePath('/'); // recipe names appear on the plan
+  redirect(`/recipes/${id}`);
 }
