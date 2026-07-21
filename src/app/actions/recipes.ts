@@ -10,6 +10,9 @@ import { parseIngredientLines } from '@/lib/services/ingredients';
 import { updateRecipe } from '@/lib/services/recipes';
 import { CAPABILITIES, type Capability } from '@/lib/macro/equipment';
 
+// A non-UUID id would make the uuid-typed query throw; treat it as a no-op instead.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function saveRecipe(formData: FormData) {
   const db = getDb();
   const name = String(formData.get('name'));
@@ -70,6 +73,7 @@ export async function promoteToFavourite(formData: FormData) {
 
 export async function updateRecipeAction(formData: FormData) {
   const id = String(formData.get('id'));
+  if (!UUID_RE.test(id)) return; // malformed id — return without changes
   await updateRecipe(getDb(), id, {
     name: String(formData.get('name')),
     cuisine: String(formData.get('cuisine')) || 'any',
