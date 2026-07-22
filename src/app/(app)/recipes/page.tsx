@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { desc } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { recipes } from '@/lib/db/schema';
@@ -20,7 +21,9 @@ export default async function RecipesPage() {
           {favourites.map((r) => (
             <li key={r.id} className="card p-4 text-sm">
               <div className="flex items-start justify-between gap-3">
-                <strong className="font-display text-[17px] leading-snug font-normal">{r.name}</strong>
+                <Link href={`/recipes/${r.id}`} className="font-display text-[17px] leading-snug hover:text-bottle">
+                  {r.name}
+                </Link>
                 <form action={deleteRecipe}>
                   <input type="hidden" name="id" value={r.id} />
                   <button className="text-xs text-soft hover:text-tomato">remove</button>
@@ -37,17 +40,6 @@ export default async function RecipesPage() {
                   <span key={e} className="rounded-full bg-bottle-soft px-2 py-0.5 text-bottle">{e}</span>
                 ))}
               </p>
-              <details className="mt-2">
-                <summary className="cursor-pointer text-xs text-soft hover:text-bottle">Ingredients &amp; method</summary>
-                <ul className="mt-1.5 ml-4 list-disc">
-                  {r.ingredients.map((i, idx) => (
-                    <li key={idx}>
-                      <span className="font-data text-[13px]">{i.quantity} {i.unit}</span> {i.name}
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-1.5 whitespace-pre-wrap text-soft">{r.method}</p>
-              </details>
             </li>
           ))}
         </ul>
@@ -59,7 +51,7 @@ export default async function RecipesPage() {
           <ul className="card divide-y divide-line text-sm">
             {aiOnes.map((r) => (
               <li key={r.id} className="flex items-center gap-3 px-4 py-2.5">
-                <span>{r.name}</span>
+                <Link href={`/recipes/${r.id}`} className="hover:text-bottle">{r.name}</Link>
                 <span className="font-data text-xs text-soft">{r.cuisine}</span>
                 <form action={promoteToFavourite} className="ml-auto">
                   <input type="hidden" name="id" value={r.id} />
