@@ -1,12 +1,17 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { recipes } from '@/lib/db/schema';
 import { estimateRecipe } from '@/lib/ai/recipes';
 import { parseIngredientLines } from '@/lib/services/ingredients';
+import { updateRecipe } from '@/lib/services/recipes';
 import { CAPABILITIES, type Capability } from '@/lib/macro/equipment';
+
+// A non-UUID id would make the uuid-typed query throw; treat it as a no-op instead.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function saveRecipe(formData: FormData) {
   const db = getDb();
@@ -64,4 +69,30 @@ export async function promoteToFavourite(formData: FormData) {
   await getDb().update(recipes).set({ source: 'family' })
     .where(eq(recipes.id, String(formData.get('id'))));
   revalidatePath('/recipes');
+}
+
+export async function updateRecipeAction(formData: FormData) {
+  const id = String(formData.get('id'));
+  if (!UUID_RE.test(id)) return; // malformed id — return without changes
+  await updateRecipe(getDb(), id, {
+    name: String(formData.get('name')),
+    cuisine: String(formData.get('cuisine')) || 'any',
+    servings: Number(formData.get('servings')) || 4,
+    ingredientLines: String(formData.get('ingredients')),
+    method: String(formData.get('method') ?? ''),
+    tags: String(formData.get('tags') ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    perServing: {
+      kcal: Number(formData.get('kcal')) || 0,
+      protein: Number(formData.get('protein')) || 0,
+      carbs: Number(formData.get('carbs')) || 0,
+      fat: Number(formData.get('fat')) || 0,
+    },
+    equipment: formData.getAll('equipment').map(String),
+    useAi: formData.get('estimateWithAi') === 'on',
+  });
+  revalidatePath('/recipes');
+  revalidatePath(`/recipes/${id}`);
+  revalidatePath('/shopping');
+  revalidatePath('/'); // recipe names appear on the plan
+  redirect(`/recipes/${id}`);
 }
