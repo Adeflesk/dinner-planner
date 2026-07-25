@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/lib/test/db';
 import type { Db } from '@/lib/db';
 import { plannedDinners, recipes, shoppingLists, weekPlans } from '@/lib/db/schema';
-import { updateRecipe, recipeHistory, type RecipeEditInput } from './recipes';
+import { deleteRecipe, recipeHistory, updateRecipe, type RecipeEditInput } from './recipes';
 import type { Estimator } from '@/lib/ai/recipes';
 
 /** A stored family recipe whose ingredients carry real store sections. */
@@ -213,5 +213,85 @@ describe('recipeHistory', () => {
     const db = await createTestDb();
     const seeded = await seedRecipe(db);
     expect(await recipeHistory(db, seeded.id)).toEqual([]);
+  });
+});
+
+async function plannedCountFor(db: Db, recipeId: string) {
+  const rows = await db.select().from(plannedDinners).where(eq(plannedDinners.recipeId, recipeId));
+  return rows.length;
+}
+
+async function recipeExists(db: Db, id: string) {
+  const [row] = await db.select().from(recipes).where(eq(recipes.id, id));
+  return row !== undefined;
+}
+
+describe('deleteRecipe', () => {
+  it('deletes a recipe whose only history is in a past week', async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    const pastList = await seedPlannedWeek(db, PAST_WEEK, seeded.id);
+    const result = await deleteRecipe(db, seeded.id, NOW);
+    expect(result).toBe('deleted');
+    expect(await recipeExists(db, seeded.id)).toBe(false);
+    expect(await plannedCountFor(db, seeded.id)).toBe(0);
+    expect(await listExists(db, pastList)).toBe(true); // that week's shopping list survives
+  });
+
+  it('deletes a recipe with no planned_dinners history at all', async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    const result = await deleteRecipe(db, seeded.id, NOW);
+    expect(result).toBe('deleted');
+    expect(await recipeExists(db, seeded.id)).toBe(false);
+  });
+
+  it('blocks deleting a recipe planned in the current week', async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    await seedPlannedWeek(db, CURRENT_WEEK, seeded.id);
+    const result = await deleteRecipe(db, seeded.id, NOW);
+    expect(result).toBe('blocked');
+    expect(await recipeExists(db, seeded.id)).toBe(true);
+    expect(await plannedCountFor(db, seeded.id)).toBe(1);
+  });
+
+  it('blocks deleting a recipe planned in a future week', async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    await seedPlannedWeek(db, '2026-07-20', seeded.id); // after CURRENT_WEEK
+    const result = await deleteRecipe(db, seeded.id, NOW);
+    expect(result).toBe('blocked');
+    expect(await recipeExists(db, seeded.id)).toBe(true);
+  });
+
+  it('blocks deleting a recipe with both a past and a current occurrence — the past row survives too', async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    await seedPlannedWeek(db, PAST_WEEK, seeded.id);
+    await seedPlannedWeek(db, CURRENT_WEEK, seeded.id);
+    const result = await deleteRecipe(db, seeded.id, NOW);
+    expect(result).toBe('blocked');
+    expect(await recipeExists(db, seeded.id)).toBe(true);
+    expect(await plannedCountFor(db, seeded.id)).toBe(2);
+  });
+
+  it('is a no-op for an unknown id', async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    const result = await deleteRecipe(db, '00000000-0000-0000-0000-000000000000', NOW);
+    expect(result).toBe('deleted');
+    expect(await recipeExists(db, seeded.id)).toBe(true);
+  });
+
+  it("does not touch a different recipe's planned_dinners rows or shopping lists", async () => {
+    const db = await createTestDb();
+    const seeded = await seedRecipe(db);
+    const other = await seedRecipe(db);
+    const otherList = await seedPlannedWeek(db, PAST_WEEK, other.id);
+    await deleteRecipe(db, seeded.id, NOW);
+    expect(await recipeExists(db, other.id)).toBe(true);
+    expect(await plannedCountFor(db, other.id)).toBe(1);
+    expect(await listExists(db, otherList)).toBe(true);
   });
 });
