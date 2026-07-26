@@ -6,7 +6,7 @@ import { recipes } from '@/lib/db/schema';
 import { CAPABILITIES } from '@/lib/macro/equipment';
 import { formatIngredientLines } from '@/lib/services/ingredients';
 import { recipeHistory } from '@/lib/services/recipes';
-import { promoteToFavourite, updateRecipeAction } from '@/app/actions/recipes';
+import { deleteRecipeFromDetailAction, promoteToFavourite, updateRecipeAction } from '@/app/actions/recipes';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,9 +19,16 @@ function cookedDate(iso: string): string {
   });
 }
 
-export default async function RecipeDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function RecipeDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ confirmDelete?: string; blocked?: string }>;
+}) {
   const { id } = await params;
   if (!UUID_RE.test(id)) notFound();
+  const { confirmDelete, blocked } = await searchParams;
   const db = getDb();
   const [recipe] = await db.select().from(recipes).where(eq(recipes.id, id));
   if (!recipe) notFound();
@@ -53,6 +60,22 @@ export default async function RecipeDetailPage({ params }: { params: Promise<{ i
             <span key={e} className="rounded-full bg-bottle-soft px-2 py-0.5 text-bottle">{e}</span>
           ))}
         </p>
+        {blocked === 'planned' ? (
+          <p className="mt-2 text-xs text-tomato">Can&apos;t delete — this recipe is planned this week or later.</p>
+        ) : confirmDelete ? (
+          <div className="mt-2 flex items-center gap-3 text-xs">
+            <span className="text-soft">Delete this recipe? This can&apos;t be undone.</span>
+            <form action={deleteRecipeFromDetailAction}>
+              <input type="hidden" name="id" value={recipe.id} />
+              <button className="text-tomato underline underline-offset-3">Yes, delete</button>
+            </form>
+            <Link href={`/recipes/${recipe.id}`} className="text-soft hover:text-bottle">Cancel</Link>
+          </div>
+        ) : (
+          <Link href={`/recipes/${recipe.id}?confirmDelete=1`} className="mt-2 inline-block text-xs text-soft hover:text-tomato">
+            Delete recipe
+          </Link>
+        )}
       </section>
 
       <section className="card p-5 text-sm">
