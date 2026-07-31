@@ -106,3 +106,21 @@ export async function recipeHistory(db: Db, recipeId: string): Promise<RecipeHis
     return { ...r, cookedOn: d.toISOString().slice(0, 10) };
   });
 }
+
+/**
+ * Delete a recipe, unless it's planned in the current week or a later one.
+ * Deletes the recipe's own (necessarily past-only) planned_dinners rows
+ * first, to satisfy the FK, then the recipe row itself.
+ */
+export async function deleteRecipe(db: Db, id: string, now: Date = new Date()): Promise<'deleted' | 'blocked'> {
+  const upcoming = await db.select({ id: plannedDinners.id })
+    .from(plannedDinners)
+    .innerJoin(weekPlans, eq(plannedDinners.weekPlanId, weekPlans.id))
+    .where(and(eq(plannedDinners.recipeId, id), gte(weekPlans.weekStart, currentWeekStart(now))))
+    .limit(1);
+  if (upcoming.length > 0) return 'blocked';
+
+  await db.delete(plannedDinners).where(eq(plannedDinners.recipeId, id));
+  await db.delete(recipes).where(eq(recipes.id, id));
+  return 'deleted';
+}

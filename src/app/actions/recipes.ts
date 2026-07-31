@@ -7,7 +7,7 @@ import { getDb } from '@/lib/db';
 import { recipes } from '@/lib/db/schema';
 import { estimateRecipe } from '@/lib/ai/recipes';
 import { parseIngredientLines } from '@/lib/services/ingredients';
-import { updateRecipe } from '@/lib/services/recipes';
+import { deleteRecipe, updateRecipe } from '@/lib/services/recipes';
 import { CAPABILITIES, type Capability } from '@/lib/macro/equipment';
 
 // A non-UUID id would make the uuid-typed query throw; treat it as a no-op instead.
@@ -54,14 +54,8 @@ export async function saveRecipe(formData: FormData) {
   revalidatePath('/recipes');
 }
 
-export async function deleteRecipe(formData: FormData) {
-  const db = getDb();
-  const id = String(formData.get('id'));
-  // Guard: refuse to delete a recipe that is currently planned (FK constraint)
-  const { plannedDinners } = await import('@/lib/db/schema');
-  const [inUse] = await db.select().from(plannedDinners).where(eq(plannedDinners.recipeId, id)).limit(1);
-  if (inUse) return; // silently skip — UI can surface this if needed
-  await db.delete(recipes).where(eq(recipes.id, id));
+export async function deleteRecipeAction(formData: FormData) {
+  await deleteRecipe(getDb(), String(formData.get('id')));
   revalidatePath('/recipes');
 }
 
@@ -95,4 +89,13 @@ export async function updateRecipeAction(formData: FormData) {
   revalidatePath('/shopping');
   revalidatePath('/'); // recipe names appear on the plan
   redirect(`/recipes/${id}`);
+}
+
+export async function deleteRecipeFromDetailAction(formData: FormData) {
+  const id = String(formData.get('id'));
+  if (!UUID_RE.test(id)) return; // malformed id — return without changes
+  const result = await deleteRecipe(getDb(), id);
+  if (result === 'blocked') redirect(`/recipes/${id}?blocked=planned`);
+  revalidatePath('/recipes');
+  redirect('/recipes');
 }

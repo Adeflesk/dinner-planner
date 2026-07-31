@@ -3,7 +3,7 @@ import { desc } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { recipes } from '@/lib/db/schema';
 import { CAPABILITIES } from '@/lib/macro/equipment';
-import { deleteRecipe, promoteToFavourite, saveRecipe } from '@/app/actions/recipes';
+import { deleteRecipeAction, promoteToFavourite, saveRecipe } from '@/app/actions/recipes';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +24,7 @@ export default async function RecipesPage() {
                 <Link href={`/recipes/${r.id}`} className="font-display text-[17px] leading-snug hover:text-bottle">
                   {r.name}
                 </Link>
-                <form action={deleteRecipe}>
+                <form action={deleteRecipeAction}>
                   <input type="hidden" name="id" value={r.id} />
                   <button className="text-xs text-soft hover:text-tomato">remove</button>
                 </form>
