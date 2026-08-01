@@ -15,7 +15,7 @@ the recipe detail page with history and editing, and recipe deletion
 (detail-page delete, past-weeks-deletable rule — PR #8, merged 2026-08-01),
 which also fixed the "deleteRecipe silently no-ops" wart from the backlog.
 
-Health: 152 tests passing in 19 files; the three-layer architecture (pure
+Health: 161 tests passing in 19 files; the three-layer architecture (pure
 macro engine / Db-injected services / thin server actions) is holding with no
 drift observed.
 
@@ -29,21 +29,17 @@ drift observed.
    corrected to `src/proxy.ts` (Next.js 16 renamed middleware to proxy);
    `backlog.md` retired in favour of this file.
 
-## Next (small, high-value, already scoped)
+3. ~~**Spread vegetarian nights**~~ ✅ `vegetarianDays` in
+   `src/lib/planner/draft.ts` now buckets the week and draws one night from
+   each bucket, over unpinned days only.
+4. ~~**`cup` units in the ingredient canon**~~ ✅ curated grams-per-cup table
+   for dry staples in `src/lib/macro/canon.ts`; cup and gram lines of the
+   same staple now merge.
+5. ~~**Harden the week-isolation test**~~ ✅ exact per-week counts plus
+   per-week-distinct ingredients, verified to fail when the `weekPlanId`
+   filter is removed (the old assertions did not).
 
-3. **Spread vegetarian nights** (backlog #3) — quota currently lands
-   Mon–Tue–Wed; spread with spacing like the cuisine sequence. Pure change in
-   `src/lib/planner/draft.ts`, unit-testable, no spec needed.
-4. **`cup` units in the ingredient canon** (backlog wart) — live lists show
-   duplicate lines (`basmati rice` twice) when recipes mix gram and cup
-   measures. Add per-ingredient cup→g factors for rice/flour-like staples in
-   `src/lib/macro/canon.ts`.
-5. **Harden the week-isolation test** (carried from the two-week final
-   review) — exact per-week dinner counts and per-week-distinct fake
-   ingredients in `planning.test.ts`, so a lost `weekPlanId` filter is caught
-   by content, not just row-ids.
-
-## Soon (needs a design pass)
+## Next (needs a design pass)
 
 6. **"Pick manually" swap** — the `swapDay` service already supports
    `{ recipeId }` mode but no UI picker exists. Small spec: where the picker
