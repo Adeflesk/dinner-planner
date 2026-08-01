@@ -6,7 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Family Dinner Planner — a Next.js (App Router) web app that drafts a week of dinners for a 4-person household (favourites + AI suggestions via Vercel AI Gateway), calculates per-person macro targets and portion guidance, and generates a store-section-grouped shopping list.
 
-**Status:** pre-implementation. The approved design spec is `docs/superpowers/specs/2026-06-10-dinner-planner-design.md` and the task-by-task implementation plan is `docs/superpowers/plans/2026-06-11-dinner-planner.md`. Read both before making changes — the spec is the source of truth for behaviour, the plan for structure and task order. Implementation follows the plan via TDD with frequent commits.
+**Status:** built and deployed (Vercel + Neon). Shipped so far: the core planner (plan/swap/pin, macro engine, shopping list, auth), editable family members, appliance-aware recipes, the ingredient canon, a two-week planning window, mark-as-staple, and the recipe detail page with cooking history, editing, and deletion.
+
+**Docs map:**
+
+- `docs/roadmap.md` — what to work on next, in priority order. Start here.
+- `docs/superpowers/specs/` + `docs/superpowers/plans/` — one dated spec + plan pair per feature. `2026-06-10-dinner-planner-design.md` and `2026-06-11-dinner-planner.md` cover the core app; every feature since has its own pair. **Read the pair for the area you're changing** — the spec is the source of truth for behaviour, the plan for structure and task order.
+- `docs/deployment.md` — deploy steps and first-run smoke test.
+
+New work follows the same cycle each time: brainstorm → design spec → implementation plan → TDD with frequent commits → feature branch → PR into `master`.
 
 ## Commands
 
@@ -36,6 +44,6 @@ AI calls use AI SDK v6 `generateObject` with Zod schemas through AI Gateway plai
 ## Conventions
 
 - **Day indexing: 0 = Monday … 6 = Sunday.** Weeks are identified by `weekStart` (Monday, `YYYY-MM-DD`, UTC).
-- Auth is a single shared household password → SHA-256 session cookie checked in `src/middleware.ts`. No per-user accounts.
+- Auth is a single shared household password → SHA-256 session cookie checked in `src/proxy.ts` (Next.js 16 renamed middleware to proxy; the file exports `proxy`, not `middleware`). No per-user accounts.
 - A re-plan or day swap invalidates the week's shopping list; manually added list items survive a rebuild.
 - Pinned days survive re-planning; AI recipes are persisted to the `recipes` table with `source: 'ai'` so planned dinners always reference a DB row.

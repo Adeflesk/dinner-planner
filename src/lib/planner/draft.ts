@@ -36,6 +36,28 @@ export function cuisineSequence(
   return seq;
 }
 
+/**
+ * Which of `availableDays` should be vegetarian. The days are cut into `count`
+ * equal buckets and one day is drawn from each, so the nights stay spread out
+ * however the rng falls — assigning them front-to-back would always land them
+ * on Mon/Tue/Wed.
+ */
+export function vegetarianDays(
+  availableDays: number[],
+  count: number,
+  rng: () => number = Math.random,
+): Set<number> {
+  if (count <= 0) return new Set();
+  if (count >= availableDays.length) return new Set(availableDays);
+  const picked = new Set<number>();
+  for (let i = 0; i < count; i++) {
+    const start = Math.floor((i * availableDays.length) / count);
+    const end = Math.floor(((i + 1) * availableDays.length) / count);
+    picked.add(availableDays[start + Math.floor(rng() * (end - start))]);
+  }
+  return picked;
+}
+
 function pickFavourite(
   favourites: FavouriteRecipe[],
   cuisine: string | null,
@@ -72,7 +94,13 @@ export async function draftWeek(opts: {
   for (const p of opts.pinned.values()) used.add(p.recipe.name.toLowerCase());
   const household = opts.equipment ?? [];
 
-  let vegRemaining = opts.vegetarianNights;
+  // Vegetarian nights are chosen up front, and only from days that aren't pinned —
+  // a pinned day keeps whatever dinner it already has, so spending the quota on one
+  // would silently lose a vegetarian night.
+  const unpinnedDays: number[] = [];
+  for (let day = 0; day < 7; day++) if (!opts.pinned.has(day)) unpinnedDays.push(day);
+  const vegDays = vegetarianDays(unpinnedDays, opts.vegetarianNights, opts.rng);
+
   const result: (DraftDinner | null)[] = new Array(7).fill(null);
   const aiSlots: { day: number; cuisine: string; dietTags: string[] }[] = [];
 
@@ -82,7 +110,7 @@ export async function draftWeek(opts: {
     if (pinnedDinner) { result[day] = pinnedDinner; continue; }
 
     const cuisine = seq[day];
-    const dietTags = vegRemaining > 0 ? ['vegetarian'] : [];
+    const dietTags = vegDays.has(day) ? ['vegetarian'] : [];
     const prev = day > 0 ? result[day - 1] : null;
     const prevStandout = prev ? standoutTags(prev.recipe.equipment) : [];
     const wantFavourite = day % 2 === 0; // ~half favourites, half AI
@@ -91,10 +119,8 @@ export async function draftWeek(opts: {
     if (wantFavourite && favMatch) {
       result[day] = { day, source: 'favourite', recipeId: favMatch.id, recipe: favMatch };
       used.add(favMatch.name.toLowerCase());
-      if (dietTags.length) vegRemaining--; // favMatch is veg (pickFavourite filtered on it)
     } else {
       aiSlots.push({ day, cuisine, dietTags });
-      if (dietTags.length) vegRemaining--; // reserve this night as vegetarian
     }
   }
 

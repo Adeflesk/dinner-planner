@@ -32,6 +32,16 @@ describe('toBuyable', () => {
     expect(toBuyable({ name: 'milk', quantity: 0.5, unit: 'l' }))
       .toEqual({ name: 'milk', quantity: 500, unit: 'g' });
   });
+  it('converts cups of dry staples to grams', () => {
+    expect(toBuyable({ name: 'basmati rice', quantity: 1, unit: 'cup' }))
+      .toEqual({ name: 'basmati rice', quantity: 185, unit: 'g' });
+    expect(toBuyable({ name: 'flour', quantity: 2, unit: 'cup' }))
+      .toEqual({ name: 'flour', quantity: 250, unit: 'g' });
+  });
+  it('leaves cups of ingredients with no curated cup weight alone', () => {
+    expect(toBuyable({ name: 'chopped kale', quantity: 2, unit: 'cup' }))
+      .toEqual({ name: 'chopped kale', quantity: 2, unit: 'cup' });
+  });
   it('leaves already-buyable and unknown items unchanged', () => {
     expect(toBuyable({ name: 'onion', quantity: 3, unit: 'pcs' }))
       .toEqual({ name: 'onion', quantity: 3, unit: 'pcs' });

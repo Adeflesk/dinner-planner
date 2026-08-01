@@ -24,6 +24,17 @@ describe('aggregateIngredients', () => {
     );
     expect(items).toHaveLength(2);
   });
+  it('merges cup and gram lines of the same dry staple into one', () => {
+    const items = aggregateIngredients(
+      [
+        { ingredients: [ing('basmati rice', 300, 'g', 'pantry')], scale: 1 },
+        { ingredients: [ing('Basmati Rice', 1, 'cup', 'pantry')], scale: 1 },
+      ],
+      [],
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ name: 'basmati rice', unit: 'g', quantity: 485 });
+  });
   it('canonicalizes unit synonyms so tbsp and tablespoon merge', () => {
     const items = aggregateIngredients(
       [

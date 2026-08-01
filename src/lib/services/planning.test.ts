@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createTestDb } from '@/lib/test/db';
-import { people, recipes, settings, plannedDinners } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
+import { people, recipes, settings, plannedDinners, weekPlans } from '@/lib/db/schema';
 import { getWeek, planWeek } from './planning';
 import { buildList, getList } from './shopping';
 import type { Generator } from '@/lib/ai/recipes';
@@ -11,10 +12,10 @@ const adult = {
   activity: 'moderate' as const, goal: 'maintain' as const, allergies: [], dislikes: [],
 };
 
-const makeAi = (equipment: string[]): Generator => async (req) => ({
+const makeAi = (equipment: string[], ingredient = 'thing'): Generator => async (req) => ({
   name: `AI ${req.cuisine} ${Math.random()}`, cuisine: req.cuisine, method: 'cook', servings: 4,
   perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 }, tags: req.dietTags, equipment,
-  ingredients: [{ name: 'thing', quantity: 1, unit: 'pcs', section: 'other' }],
+  ingredients: [{ name: ingredient, quantity: 1, unit: 'pcs', section: 'other' }],
 });
 
 describe('getWeek', () => {
@@ -91,18 +92,29 @@ describe('two-week window', () => {
     await db.insert(people).values(adult);
     await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: [] });
 
-    await planWeek(db, '2026-07-06', makeAi([]));
-    await planWeek(db, '2026-07-13', makeAi([]));
+    // Each week's dinners carry an ingredient only that week uses, so a query that
+    // lost its weekPlanId filter shows up as wrong list *content*, not just wrong ids.
+    await planWeek(db, '2026-07-06', makeAi([], 'thisweekonly'));
+    await planWeek(db, '2026-07-13', makeAi([], 'nextweekonly'));
 
-    const dinners = await db.select().from(plannedDinners);
-    expect(dinners.length).toBeGreaterThan(7); // two separate weeks of dinners
+    const planId = async (weekStart: string) =>
+      (await db.select().from(weekPlans).where(eq(weekPlans.weekStart, weekStart)))[0].id;
+    const dinnersOf = async (weekStart: string) =>
+      db.select().from(plannedDinners).where(eq(plannedDinners.weekPlanId, await planId(weekStart)));
+
+    // Exact counts: 7 nights each, and nothing beyond those two weeks.
+    expect(await dinnersOf('2026-07-06')).toHaveLength(7);
+    expect(await dinnersOf('2026-07-13')).toHaveLength(7);
+    expect(await db.select().from(plannedDinners)).toHaveLength(14);
 
     const thisList = (await buildList(db, '2026-07-06', []))!;
     const nextList = (await buildList(db, '2026-07-13', []))!;
     expect(thisList.id).not.toBe(nextList.id);
+    expect(thisList.items.map((i) => i.name)).toEqual(['thisweekonly']);
+    expect(nextList.items.map((i) => i.name)).toEqual(['nextweekonly']);
 
     // Re-planning NEXT week invalidates only next week's list.
-    await planWeek(db, '2026-07-13', makeAi([]));
+    await planWeek(db, '2026-07-13', makeAi([], 'nextweekonly'));
     expect(await getList(db, '2026-07-06')).not.toBeNull();
     expect(await getList(db, '2026-07-13')).toBeNull();
   });

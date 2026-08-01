@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cuisineSequence, draftWeek, type FavouriteRecipe } from './draft';
+import { cuisineSequence, draftWeek, vegetarianDays, type FavouriteRecipe } from './draft';
 import type { AiRecipe } from '@/lib/ai/schema';
 
 const fav = (name: string, cuisine: string, tags: string[] = []): FavouriteRecipe => ({
@@ -29,6 +29,29 @@ describe('cuisineSequence', () => {
   });
   it("returns 'any' slots when no cuisines configured", () => {
     expect(cuisineSequence([], 2, () => 0)).toEqual(['any', 'any']);
+  });
+});
+
+describe('vegetarianDays', () => {
+  const week = [0, 1, 2, 3, 4, 5, 6];
+  const sorted = (s: Set<number>) => [...s].sort((a, b) => a - b);
+
+  it('spreads nights across the week instead of clustering them at the start', () => {
+    expect(sorted(vegetarianDays(week, 3, () => 0))).toEqual([0, 2, 4]);
+  });
+  it('jitters the pick within each bucket', () => {
+    expect(sorted(vegetarianDays(week, 3, () => 0.99))).toEqual([1, 3, 6]);
+  });
+  it('returns no nights when the quota is zero', () => {
+    expect(vegetarianDays(week, 0, () => 0).size).toBe(0);
+  });
+  it('marks every available day when the quota meets or exceeds them', () => {
+    expect(sorted(vegetarianDays([0, 1, 2], 5, () => 0))).toEqual([0, 1, 2]);
+  });
+  it('only picks from the days offered, so pinned days keep their dinner', () => {
+    const days = vegetarianDays([1, 3, 5], 2, () => 0);
+    expect(days.size).toBe(2);
+    for (const d of days) expect([1, 3, 5]).toContain(d);
   });
 });
 
@@ -90,6 +113,16 @@ describe('draftWeek', () => {
       },
     });
     expect(days.filter((d) => d.recipe.tags.includes('vegetarian'))).toHaveLength(2);
+  });
+
+  it('spreads vegetarian nights across the week rather than stacking them at the front', async () => {
+    const days = await draftWeek({
+      favourites: [], cuisines: ['indian', 'italian'], recentNames: [],
+      pinned: new Map(), vegetarianNights: 3, rng: () => 0,
+      generate: async (req) => aiRecipe(`AI ${req.day}`, req.cuisine, req.dietTags),
+    });
+    const vegDays = days.filter((d) => d.recipe.tags.includes('vegetarian')).map((d) => d.day);
+    expect(vegDays).toEqual([0, 2, 4]);
   });
 
   it('retries slots AI failed to fill (flaky AI), so the week is not left full of gaps', async () => {
