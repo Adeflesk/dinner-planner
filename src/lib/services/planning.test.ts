@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createTestDb } from '@/lib/test/db';
 import { eq } from 'drizzle-orm';
 import { people, recipes, settings, plannedDinners, weekPlans } from '@/lib/db/schema';
-import { getWeek, planWeek } from './planning';
+import { getWeek, planWeek, pickerOptions } from './planning';
 import { buildList, getList } from './shopping';
 import type { Generator } from '@/lib/ai/recipes';
 import type { RecipeRequest } from '@/lib/ai/recipes';
@@ -117,5 +117,69 @@ describe('two-week window', () => {
     await planWeek(db, '2026-07-13', makeAi([], 'nextweekonly'));
     expect(await getList(db, '2026-07-06')).not.toBeNull();
     expect(await getList(db, '2026-07-13')).toBeNull();
+  });
+});
+
+describe('pickerOptions', () => {
+  const recipeRow = (name: string, source: 'family' | 'ai', createdAt: Date) => ({
+    name, cuisine: 'italian', method: '', servings: 4,
+    perServing: { kcal: 600.4, protein: 40, carbs: 55, fat: 20 },
+    tags: [], equipment: [], source,
+    ingredients: [{ name: 'x', quantity: 1, unit: 'pcs', section: 'other' as const }],
+    createdAt,
+  });
+
+  it('lists favourites before AI dinners, newest first within each group', async () => {
+    const db = await createTestDb();
+    await db.insert(recipes).values([
+      recipeRow('Old Fav', 'family', new Date('2026-01-01')),
+      recipeRow('New Fav', 'family', new Date('2026-06-01')),
+      recipeRow('Old AI', 'ai', new Date('2026-02-01')),
+      recipeRow('New AI', 'ai', new Date('2026-07-01')),
+    ]);
+
+    const opts = await pickerOptions(db, '2026-07-06');
+
+    expect(opts.map((o) => o.name)).toEqual(['New Fav', 'Old Fav', 'New AI', 'Old AI']);
+    expect(opts[0].favourite).toBe(true);
+    expect(opts[3].favourite).toBe(false);
+    expect(opts[0].kcal).toBe(600); // rounded for display
+  });
+
+  it('filters by name case-insensitively; a blank query filters nothing', async () => {
+    const db = await createTestDb();
+    await db.insert(recipes).values([
+      recipeRow('Chicken Katsu', 'family', new Date('2026-01-01')),
+      recipeRow('Beef Rendang', 'family', new Date('2026-01-02')),
+    ]);
+
+    const names = async (q?: string) => (await pickerOptions(db, '2026-07-06', q)).map((o) => o.name);
+
+    expect(await names('chick')).toEqual(['Chicken Katsu']);
+    expect(await names('KATSU')).toEqual(['Chicken Katsu']);
+    expect(await names('   ')).toHaveLength(2);
+    expect(await names()).toHaveLength(2);
+  });
+
+  it('marks the day a recipe occupies this week and ignores other weeks', async () => {
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: [] });
+    await planWeek(db, '2026-07-06', makeAi([]));
+
+    const thisWeek = await pickerOptions(db, '2026-07-06');
+    expect(thisWeek.map((o) => o.plannedDay).sort((a, b) => a! - b!)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+
+    const otherWeek = await pickerOptions(db, '2026-07-13');
+    expect(otherWeek.every((o) => o.plannedDay === null)).toBe(true);
+  });
+
+  it('does not create a week plan row just by looking', async () => {
+    const db = await createTestDb();
+    await db.insert(recipes).values([recipeRow('Solo', 'family', new Date('2026-01-01'))]);
+
+    await pickerOptions(db, '2026-07-06');
+
+    expect(await db.select().from(weekPlans)).toHaveLength(0);
   });
 });
