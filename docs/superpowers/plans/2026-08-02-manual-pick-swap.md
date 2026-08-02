@@ -29,7 +29,15 @@
 | `src/lib/services/planning.ts` | Add `PickerOption` type + `pickerOptions` query | Modify |
 | `src/lib/services/planning.test.ts` | Tests for `pickerOptions` and `swapDay`'s `{ recipeId }` path | Modify |
 | `src/app/actions/plan.ts` | Add `pick` mode to `swapDayAction` | Modify |
-| `src/app/(app)/page.tsx` | "Pick manually" links + `PickerPanel` component | Modify |
+| `vitest.config.ts` | Allow `.test.tsx` files | Modify |
+| `src/app/(app)/PickerPanel.tsx` | `PickLink` + `PickerPanel` presentational components | Create |
+| `src/app/(app)/PickerPanel.test.tsx` | Component tests for the above | Create |
+| `src/app/(app)/page.tsx` | Wire the links and panel into the page | Modify |
+
+The picker components live in their own module rather than inside
+`page.tsx`, following the existing `src/app/(app)/WeekTabs.tsx` precedent.
+That is what makes them renderable in a test without dragging in the
+page's async data loading.
 
 ---
 
@@ -317,16 +325,277 @@ git commit -m "feat: swapDayAction gains a pick mode for an explicit recipe"
 
 ---
 
-### Task 3: Picker UI on the Plan page
+### Task 3: Component test harness + picker components
+
+**Files:**
+- Modify: `vitest.config.ts`
+- Modify: `package.json` (devDependencies, via npm)
+- Create: `src/app/(app)/PickerPanel.tsx`
+- Create: `src/app/(app)/PickerPanel.test.tsx`
+
+**Interfaces:**
+- Consumes: `PickerOption` from Task 1 (`@/lib/services/planning`); `swapDayAction` from Task 2 (`@/app/actions/plan`); `DAY_NAMES` from `@/lib/services/dates`.
+- Produces:
+  ```ts
+  export function PickLink(props: { day: number; week: string }): JSX.Element;
+  export function PickerPanel(props: {
+    day: number; week: string; query: string;
+    options: PickerOption[]; dayLabel: string;
+  }): JSX.Element;
+  ```
+  Task 4 imports both from `@/app/(app)/PickerPanel`.
+
+This repo has no component tests yet. This task adds the harness and uses
+it on the one piece of UI in this feature that carries real display logic.
+
+- [ ] **Step 1: Install the test dependencies**
+
+```bash
+npm i -D @testing-library/react jsdom
+```
+
+`@testing-library/react` v16+ supports React 19 (this repo is on 19.2.4).
+No `jest-dom` package — plain `expect` assertions keep the dependency
+count down.
+
+- [ ] **Step 2: Let vitest see `.tsx` tests**
+
+In `vitest.config.ts`, replace the `include` line:
+
+```ts
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'tests/**/*.test.ts'],
+```
+
+Leave `testTimeout` and `maxWorkers` exactly as they are — they exist for
+the PGlite suites and are unrelated to this change. Do **not** set a global
+`environment`; the DOM tests opt in per file, so the existing node-env
+suites are untouched.
+
+- [ ] **Step 3: Write the failing component tests**
+
+Create `src/app/(app)/PickerPanel.test.tsx`:
+
+```tsx
+// @vitest-environment jsdom
+import type { ReactNode } from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import type { PickerOption } from '@/lib/services/planning';
+
+// next/link wants app-router context a bare render cannot provide, and the
+// action module would pull the whole DB layer into a DOM test. Neither is
+// what these tests are about.
+vi.mock('next/link', () => ({
+  default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a>,
+}));
+vi.mock('@/app/actions/plan', () => ({ swapDayAction: '/stub-action' }));
+
+const { PickLink, PickerPanel } = await import('./PickerPanel');
+
+const option = (over: Partial<PickerOption> = {}): PickerOption => ({
+  id: '11111111-1111-4111-8111-111111111111',
+  name: 'Chicken Katsu',
+  cuisine: 'japanese',
+  kcal: 712,
+  favourite: true,
+  plannedDay: null,
+  ...over,
+});
+
+const panel = (over: Partial<Parameters<typeof PickerPanel>[0]> = {}) =>
+  render(
+    <PickerPanel
+      day={2}
+      week=""
+      query=""
+      dayLabel="Wednesday 15 July"
+      options={[option()]}
+      {...over}
+    />,
+  );
+
+describe('PickLink', () => {
+  it('links to the picker for its own day and anchors to the panel', () => {
+    render(<PickLink day={4} week="" />);
+    expect(screen.getByRole('link').getAttribute('href')).toBe('/?pick=4#pick');
+  });
+
+  it('keeps the next-week context', () => {
+    render(<PickLink day={4} week="next" />);
+    expect(screen.getByRole('link').getAttribute('href')).toBe('/?pick=4&week=next#pick');
+  });
+});
+
+describe('PickerPanel', () => {
+  it('names the day it is picking for', () => {
+    panel();
+    expect(screen.getByRole('heading').textContent).toContain('Wednesday 15 July');
+  });
+
+  it('shows each recipe with its cuisine and calories', () => {
+    panel({ options: [option({ name: 'Beef Rendang', cuisine: 'indonesian', kcal: 690 })] });
+    expect(screen.getByText('Beef Rendang')).toBeDefined();
+    const row = screen.getByText('Beef Rendang').closest('li')!;
+    expect(within(row).getByText(/indonesian/).textContent).toContain('690 kcal');
+  });
+
+  it('marks a recipe already planned this week but still offers it', () => {
+    panel({ options: [option({ plannedDay: 1 })] });
+    const row = screen.getByText('Chicken Katsu').closest('li')!;
+    expect(row.textContent).toContain('already on Tue');
+    expect(within(row).getByRole('button').textContent).toBe('Use');
+  });
+
+  it('distinguishes AI dinners from favourites', () => {
+    panel({ options: [option({ favourite: false })] });
+    expect(screen.getByText('Chicken Katsu').closest('li')!.textContent).toContain('from a past plan');
+  });
+
+  it('carries the day, week and recipe id so the action knows what to swap', () => {
+    panel({ day: 5, week: 'next', options: [option({ id: '22222222-2222-4222-8222-222222222222' })] });
+    const form = screen.getByText('Chicken Katsu').closest('li')!.querySelector('form')!;
+    const value = (name: string) => form.querySelector<HTMLInputElement>(`input[name="${name}"]`)!.value;
+    expect(value('day')).toBe('5');
+    expect(value('week')).toBe('next');
+    expect(value('mode')).toBe('pick');
+    expect(value('recipeId')).toBe('22222222-2222-4222-8222-222222222222');
+  });
+
+  it('explains an empty search rather than showing a blank box', () => {
+    panel({ query: 'zzz', options: [] });
+    expect(screen.getByText(/Nothing matches/).textContent).toContain('zzz');
+  });
+
+  it('points an empty library at the Recipes page instead', () => {
+    panel({ query: '', options: [] });
+    expect(screen.getByText(/No recipes yet/)).toBeDefined();
+  });
+
+  it('keeps the current search in the box and the week on the close link', () => {
+    panel({ week: 'next', query: 'katsu' });
+    expect(screen.getByRole('textbox').getAttribute('value')).toBe('katsu');
+    expect(screen.getByText('close').getAttribute('href')).toBe('/?week=next');
+  });
+});
+```
+
+- [ ] **Step 4: Run the tests to verify they fail**
+
+Run: `npx vitest run "src/app/(app)/PickerPanel.test.tsx"`
+Expected: FAIL — `./PickerPanel` does not exist.
+
+- [ ] **Step 5: Create the components**
+
+Create `src/app/(app)/PickerPanel.tsx`:
+
+```tsx
+import Link from 'next/link';
+import { DAY_NAMES } from '@/lib/services/dates';
+import { swapDayAction } from '@/app/actions/plan';
+import type { PickerOption } from '@/lib/services/planning';
+
+const PILL =
+  'rounded-full border border-line px-3 py-1 text-xs text-soft hover:border-bottle hover:text-bottle';
+
+/** Opens the picker panel below the week grid. Navigation only — no JS. */
+export function PickLink({ day, week }: { day: number; week: string }) {
+  return (
+    <Link href={`/?pick=${day}${week === 'next' ? '&week=next' : ''}#pick`} className={PILL}>
+      Pick manually
+    </Link>
+  );
+}
+
+/** The manual-pick panel: search, then one row per recipe in the library. */
+export function PickerPanel({
+  day, week, query, options, dayLabel,
+}: {
+  day: number; week: string; query: string; options: PickerOption[]; dayLabel: string;
+}) {
+  const closeHref = week === 'next' ? '/?week=next' : '/';
+  return (
+    <section id="pick" aria-label="Pick a dinner" className="card p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-display text-[19px]">Pick a dinner for {dayLabel}</h2>
+        <Link className="text-xs text-soft hover:text-bottle" href={closeHref}>close</Link>
+      </div>
+
+      <form className="mt-3 flex gap-2" action="/">
+        <input type="hidden" name="pick" value={day} />
+        {week === 'next' && <input type="hidden" name="week" value="next" />}
+        <input
+          name="q"
+          defaultValue={query}
+          placeholder="Search by name"
+          className="w-full rounded-md border border-line px-2.5 py-1.5 text-sm"
+        />
+        <button className={PILL}>Search</button>
+      </form>
+
+      <p className="eyebrow mt-3">{options.length} {options.length === 1 ? 'recipe' : 'recipes'}</p>
+
+      {options.length === 0 ? (
+        <p className="mt-2 text-sm text-soft">
+          {query ? `Nothing matches “${query}”.` : 'No recipes yet — add one on the Recipes page.'}
+        </p>
+      ) : (
+        <ul className="mt-1.5 max-h-[320px] divide-y divide-line overflow-y-auto">
+          {options.map((o) => (
+            <li key={o.id} className="flex items-center justify-between gap-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{o.name}</p>
+                <p className="font-data text-[11px] text-soft">
+                  {o.cuisine} · {o.kcal} kcal
+                  {!o.favourite && ' · from a past plan'}
+                  {o.plannedDay !== null && ` · already on ${DAY_NAMES[o.plannedDay]}`}
+                </p>
+              </div>
+              <form action={swapDayAction}>
+                <input type="hidden" name="day" value={day} />
+                <input type="hidden" name="week" value={week} />
+                <input type="hidden" name="mode" value="pick" />
+                <input type="hidden" name="recipeId" value={o.id} />
+                <button className={PILL}>Use</button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+```
+
+- [ ] **Step 6: Run the tests to verify they pass**
+
+Run: `npx vitest run "src/app/(app)/PickerPanel.test.tsx"`
+Expected: PASS, all cases.
+
+- [ ] **Step 7: Run the full suite and typecheck**
+
+Run: `npm test && npx tsc --noEmit`
+Expected: all tests pass (the existing PGlite suites must be unaffected), no type errors.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add package.json package-lock.json vitest.config.ts "src/app/(app)/PickerPanel.tsx" "src/app/(app)/PickerPanel.test.tsx"
+git commit -m "feat: picker panel components, with the repo's first component tests"
+```
+
+---
+
+### Task 4: Wire the picker into the Plan page
 
 **Files:**
 - Modify: `src/app/(app)/page.tsx`
 
 **Interfaces:**
-- Consumes: `pickerOptions` and `PickerOption` from Task 1; `swapDayAction` with `mode=pick` from Task 2; the existing `DAY_NAMES`, `longDay`, `utc` helpers.
+- Consumes: `pickerOptions` from Task 1; `PickLink` and `PickerPanel` from Task 3; the existing `longDay`, `utc` helpers already defined in `page.tsx`.
 - Produces: no exports — this is the top-level page.
 
-There are no component tests in this repo, so this task is verified by typecheck, production build, and a manual pass against the dev server.
+Verified by typecheck, production build, and a manual pass against the dev
+server. The display logic itself is already covered by Task 3's tests.
 
 - [ ] **Step 1: Widen the page's search params**
 
@@ -355,118 +624,27 @@ Immediately after the existing `const week = await getWeek(getDb(), weekStart);`
 Add the imports at the top of the file:
 
 ```tsx
-import { getWeek, pickerOptions, type PickerOption } from '@/lib/services/planning';
+import { getWeek, pickerOptions } from '@/lib/services/planning';
+import { PickLink, PickerPanel } from './PickerPanel';
 ```
 
-(replacing the existing `import { getWeek } from '@/lib/services/planning';`)
+(the first line replaces the existing `import { getWeek } from '@/lib/services/planning';`)
 
 - [ ] **Step 3: Add the "Pick manually" link to `SwapButtons`**
 
-Replace the `SwapButtons` component (currently lines 26–41) with:
+In the existing `SwapButtons` component, add the imported `PickLink` as the
+last child of its wrapper `<div>`, directly after the `.map(...)` block that
+renders the three swap forms:
 
 ```tsx
-function SwapButtons({ day, cuisine, week }: { day: number; cuisine: string; week: string }) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {(['favourite', 'ai', 'ai-same-cuisine'] as const).map((mode) => (
-        <form key={mode} action={swapDayAction}>
-          <input type="hidden" name="day" value={day} />
-          <input type="hidden" name="mode" value={mode} />
-          <input type="hidden" name="week" value={week} />
-          <button className="rounded-full border border-line px-3 py-1 text-xs text-soft hover:border-bottle hover:text-bottle">
-            {mode === 'favourite' ? 'Another favourite' : mode === 'ai' ? 'New idea' : `More ${cuisine}`}
-          </button>
-        </form>
       ))}
       <PickLink day={day} week={week} />
     </div>
-  );
-}
-
-/** Opens the picker panel below the week grid. Navigation only — no JS. */
-function PickLink({ day, week }: { day: number; week: string }) {
-  return (
-    <Link
-      href={`/?pick=${day}${week === 'next' ? '&week=next' : ''}#pick`}
-      className="rounded-full border border-line px-3 py-1 text-xs text-soft hover:border-bottle hover:text-bottle"
-    >
-      Pick manually
-    </Link>
-  );
-}
 ```
 
-- [ ] **Step 4: Add the `PickerPanel` component**
+Leave the three existing swap forms exactly as they are.
 
-Add below `PickLink`:
-
-```tsx
-function PickerPanel({
-  day, week, query, options, dayLabel,
-}: {
-  day: number; week: string; query: string; options: PickerOption[]; dayLabel: string;
-}) {
-  const closeHref = week === 'next' ? '/?week=next' : '/';
-  return (
-    <section id="pick" aria-label="Pick a dinner" className="card p-5">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-display text-[19px]">
-          Pick a dinner for {dayLabel}
-        </h2>
-        <Link className="text-xs text-soft hover:text-bottle" href={closeHref}>close</Link>
-      </div>
-
-      <form className="mt-3 flex gap-2" action="/">
-        <input type="hidden" name="pick" value={day} />
-        {week === 'next' && <input type="hidden" name="week" value="next" />}
-        <input
-          name="q"
-          defaultValue={query}
-          placeholder="Search by name"
-          className="w-full rounded-md border border-line px-2.5 py-1.5 text-sm"
-        />
-        <button className="rounded-full border border-line px-3 py-1 text-xs text-soft hover:border-bottle hover:text-bottle">
-          Search
-        </button>
-      </form>
-
-      <p className="eyebrow mt-3">{options.length} {options.length === 1 ? 'recipe' : 'recipes'}</p>
-
-      {options.length === 0 ? (
-        <p className="mt-2 text-sm text-soft">
-          {query ? `Nothing matches “${query}”.` : 'No recipes yet — add one on the Recipes page.'}
-        </p>
-      ) : (
-        <ul className="mt-1.5 max-h-[320px] divide-y divide-line overflow-y-auto">
-          {options.map((o) => (
-            <li key={o.id} className="flex items-center justify-between gap-3 py-2">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{o.name}</p>
-                <p className="font-data text-[11px] text-soft">
-                  {o.cuisine} · {o.kcal} kcal
-                  {!o.favourite && ' · from a past plan'}
-                  {o.plannedDay !== null && ` · already on ${DAY_NAMES[o.plannedDay]}`}
-                </p>
-              </div>
-              <form action={swapDayAction}>
-                <input type="hidden" name="day" value={day} />
-                <input type="hidden" name="week" value={week} />
-                <input type="hidden" name="mode" value="pick" />
-                <input type="hidden" name="recipeId" value={o.id} />
-                <button className="rounded-full border border-line px-3 py-1 text-xs text-soft hover:border-bottle hover:text-bottle">
-                  Use
-                </button>
-              </form>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-```
-
-- [ ] **Step 5: Give empty days a "Pick manually" link**
+- [ ] **Step 4: Give empty days a "Pick manually" link**
 
 In the week grid, replace the empty-day branch (currently `<p className="my-auto text-[13px] text-soft">Nothing planned</p>`) with:
 
@@ -477,7 +655,7 @@ In the week grid, replace the empty-day branch (currently `<p className="my-auto
                   </div>
 ```
 
-- [ ] **Step 6: Render the panel and the error notice**
+- [ ] **Step 5: Render the panel and the error notice**
 
 Directly after the closing `</section>` of the "Week at a glance" section, add:
 
@@ -503,12 +681,12 @@ And alongside the existing `degraded` / `planned` notices, add:
       )}
 ```
 
-- [ ] **Step 7: Typecheck and build**
+- [ ] **Step 6: Typecheck and build**
 
 Run: `npx tsc --noEmit && npm run build`
 Expected: no type errors; the build completes and lists `/` as dynamic.
 
-- [ ] **Step 8: Manual verification**
+- [ ] **Step 7: Manual verification**
 
 Run `npm run dev` (needs `.env.local`) and confirm:
 
@@ -520,12 +698,12 @@ Run `npm run dev` (needs `.env.local`) and confirm:
 6. A day with no dinner shows **Pick manually**, and picking fills the gap.
 7. The `next` week tab keeps `week=next` through opening the picker, searching, and picking.
 
-- [ ] **Step 9: Run the full suite**
+- [ ] **Step 8: Run the full suite**
 
 Run: `npm test`
 Expected: all tests pass.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add "src/app/(app)/page.tsx"
@@ -547,15 +725,21 @@ git commit -m "feat: pick a specific recipe for a day from the Plan page"
 | Picker must not create a week plan row | 1 |
 | `pick` mode routes to `{ recipeId }` | 2 |
 | Malformed-id guard reusing `UUID_RE` | 2 |
-| `{ ok: false }` surfaced as `?error=` | 2 (action) + 3 (notice) |
+| `{ ok: false }` surfaced as `?error=` | 2 (action) + 4 (notice) |
 | Redirect drops `pick` / `q` so the panel closes | 2 |
-| Single full-width panel beneath the grid, `id="pick"` | 3 |
+| Single full-width panel beneath the grid, `id="pick"` | 3 (component) + 4 (rendered once) |
 | GET search form, hidden `pick` / `week` | 3 |
 | Scrolling list, result count, empty state | 3 |
 | "already on <Day>" marker, still pickable | 3 |
-| "Pick manually" on empty days | 3 (Step 5) |
+| "Pick manually" on empty days | 4 (Step 4) |
 | No new route, no client JS, no schema change | all |
 
 **Placeholder scan:** none — every step carries the literal code or command to run.
 
-**Type consistency:** `PickerOption` is defined once in Task 1 and imported by name in Task 3. `pickerOptions(db, weekStart, query?)` is called with exactly that shape in Task 3 Step 2. `swapDay(..., { recipeId })` matches the existing signature verified in Task 2 Step 2. `PickerPanel` takes `dayLabel` (built at the call site with the page's existing `longDay(utc(weekStart, day))` helpers, giving the spec's long day name) while the row markers use the short `DAY_NAMES` array from `@/lib/services/dates` — both are already imported by the page.
+**Type consistency:** `PickerOption` is defined once in Task 1 and imported by name in Task 3. `pickerOptions(db, weekStart, query?)` is called with exactly that shape in Task 4 Step 2. `swapDay(..., { recipeId })` matches the existing signature verified in Task 2 Step 2. `PickLink` and `PickerPanel` are defined in Task 3 and imported from `./PickerPanel` in Task 4 — the page no longer declares them. `PickerPanel` takes `dayLabel` (built at the call site with the page's existing `longDay(utc(weekStart, day))` helpers, giving the spec's long day name) while the row markers use the short `DAY_NAMES` array, imported by `PickerPanel.tsx` itself.
+
+**Deviation from the spec, authorised 2026-08-02:** the spec's testing section
+assumed no component tests were possible. Task 3 adds the harness
+(`@testing-library/react` + `jsdom`, `.test.tsx` in the vitest include) and
+covers the picker's display logic directly, so Task 4's manual checklist now
+backs up real assertions rather than standing alone.
