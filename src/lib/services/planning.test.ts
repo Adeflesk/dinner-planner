@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createTestDb } from '@/lib/test/db';
 import { eq } from 'drizzle-orm';
 import { people, recipes, settings, plannedDinners, weekPlans } from '@/lib/db/schema';
-import { getWeek, planWeek, pickerOptions } from './planning';
+import { getWeek, planWeek, pickerOptions, swapDay } from './planning';
 import { buildList, getList } from './shopping';
 import type { Generator } from '@/lib/ai/recipes';
 import type { RecipeRequest } from '@/lib/ai/recipes';
@@ -181,5 +181,43 @@ describe('pickerOptions', () => {
     await pickerOptions(db, '2026-07-06');
 
     expect(await db.select().from(weekPlans)).toHaveLength(0);
+  });
+});
+
+describe('swapDay by explicit recipe id', () => {
+  it('puts the chosen recipe on the day', async () => {
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: [] });
+    await planWeek(db, '2026-07-06', makeAi([]));
+
+    const [chosen] = await db.insert(recipes).values({
+      name: 'Hand Picked', cuisine: 'italian', method: '', servings: 4,
+      perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 },
+      tags: [], equipment: [], source: 'family',
+      ingredients: [{ name: 'x', quantity: 1, unit: 'pcs', section: 'other' }],
+    }).returning();
+
+    const { ok } = await swapDay(db, '2026-07-06', 2, { recipeId: chosen.id });
+
+    expect(ok).toBe(true);
+    const week = await getWeek(db, '2026-07-06');
+    expect(week.dinners.find((d) => d.day === 2)!.recipe.name).toBe('Hand Picked');
+  });
+
+  it('leaves the day untouched when the recipe no longer exists', async () => {
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: [] });
+    await planWeek(db, '2026-07-06', makeAi([]));
+    const before = (await getWeek(db, '2026-07-06')).dinners.find((d) => d.day === 2)!.recipe.name;
+
+    const { ok } = await swapDay(db, '2026-07-06', 2, {
+      recipeId: '00000000-0000-4000-8000-000000000000',
+    });
+
+    expect(ok).toBe(false);
+    const after = (await getWeek(db, '2026-07-06')).dinners.find((d) => d.day === 2)!.recipe.name;
+    expect(after).toBe(before);
   });
 });
