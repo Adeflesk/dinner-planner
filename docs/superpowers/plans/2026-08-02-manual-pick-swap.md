@@ -378,8 +378,8 @@ Create `src/app/(app)/PickerPanel.test.tsx`:
 ```tsx
 // @vitest-environment jsdom
 import type { ReactNode } from 'react';
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import type { PickerOption } from '@/lib/services/planning';
 
 // next/link wants app-router context a bare render cannot provide, and the
@@ -391,6 +391,10 @@ vi.mock('next/link', () => ({
 vi.mock('@/app/actions/plan', () => ({ swapDayAction: '/stub-action' }));
 
 const { PickLink, PickerPanel } = await import('./PickerPanel');
+
+// This project doesn't run vitest with `globals`, so Testing Library's
+// automatic cleanup never registers and renders would pile up in one document.
+afterEach(cleanup);
 
 const option = (over: Partial<PickerOption> = {}): PickerOption => ({
   id: '11111111-1111-4111-8111-111111111111',
