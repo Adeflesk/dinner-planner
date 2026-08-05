@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { getDb } from '@/lib/db';
 import { DAY_NAMES, resolveWeekStart } from '@/lib/services/dates';
-import { getWeek } from '@/lib/services/planning';
+import { getWeek, pickerOptions } from '@/lib/services/planning';
 import { planMyWeek, swapDayAction, togglePinAction } from '@/app/actions/plan';
 import { standoutTags } from '@/lib/macro/equipment';
 import { WeekTabs } from './WeekTabs';
+import { PickLink, PickerPanel } from './PickerPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,7 @@ function SwapButtons({ day, cuisine, week }: { day: number; cuisine: string; wee
           </button>
         </form>
       ))}
+      <PickLink day={day} week={week} />
     </div>
   );
 }
@@ -97,13 +99,21 @@ function DinnerDetail({ dinner, personName }: { dinner: Dinner; personName: (id:
 export default async function PlanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ degraded?: string; planned?: string; week?: string }>;
+  searchParams: Promise<{
+    degraded?: string; planned?: string; week?: string;
+    pick?: string; q?: string; error?: string;
+  }>;
 }) {
-  const { degraded, planned, week: weekParam } = await searchParams;
+  const { degraded, planned, week: weekParam, pick, q, error } = await searchParams;
   const isNext = weekParam === 'next';
   const weekRaw = isNext ? 'next' : '';           // hidden-input value; '' resolves to current
   const weekStart = resolveWeekStart(isNext ? 'next' : undefined);
   const week = await getWeek(getDb(), weekStart);
+
+  // Only 0–6 opens the picker; anything else is ignored rather than trusted.
+  const pickDay = pick !== undefined && /^[0-6]$/.test(pick) ? Number(pick) : null;
+  const pickQuery = typeof q === 'string' ? q : '';
+  const pickList = pickDay === null ? [] : await pickerOptions(getDb(), weekStart, pickQuery);
   const personName = (id: string) => week.people.find((p) => p.id === id)?.name ?? '?';
 
   const todayIdx = (new Date().getUTCDay() + 6) % 7;
@@ -133,6 +143,12 @@ export default async function PlanPage({
       {degraded && (
         <p className="card border-dijon bg-dijon-soft p-3 text-sm">
           AI suggestions were unavailable — this week was drafted from favourites only.
+        </p>
+      )}
+
+      {error === 'gone' && (
+        <p className="card border-dijon bg-dijon-soft p-3 text-sm">
+          That recipe was removed before the swap went through — nothing changed.
         </p>
       )}
 
@@ -257,13 +273,26 @@ export default async function PlanPage({
                     </details>
                   </>
                 ) : (
-                  <p className="my-auto text-[13px] text-soft">Nothing planned</p>
+                  <div className="my-auto space-y-1.5">
+                    <p className="text-[13px] text-soft">Nothing planned</p>
+                    <PickLink day={day} week={weekRaw} />
+                  </div>
                 )}
               </article>
             );
           })}
         </div>
       </section>
+
+      {pickDay !== null && (
+        <PickerPanel
+          day={pickDay}
+          week={weekRaw}
+          query={pickQuery}
+          options={pickList}
+          dayLabel={longDay(utc(weekStart, pickDay))}
+        />
+      )}
     </main>
   );
 }

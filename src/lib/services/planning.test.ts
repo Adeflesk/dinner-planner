@@ -185,6 +185,28 @@ describe('pickerOptions', () => {
 });
 
 describe('swapDay by explicit recipe id', () => {
+  it('fills a day that has no dinner at all', async () => {
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: ['steam'] });
+    // Every AI suggestion needs gear the household lacks, so the re-screen rejects
+    // them all: the week plan exists but every day is empty — the gap the Plan
+    // page now offers "Pick manually" on.
+    await planWeek(db, '2026-07-06', makeAi(['sous-vide']));
+    const [chosen] = await db.insert(recipes).values({
+      name: 'Gap Filler', cuisine: 'italian', method: '', servings: 4,
+      perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 },
+      tags: [], equipment: [], source: 'family',
+      ingredients: [{ name: 'x', quantity: 1, unit: 'pcs', section: 'other' }],
+    }).returning();
+
+    const { ok } = await swapDay(db, '2026-07-06', 3, { recipeId: chosen.id });
+
+    expect(ok).toBe(true);
+    const week = await getWeek(db, '2026-07-06');
+    expect(week.dinners.find((d) => d.day === 3)!.recipe.name).toBe('Gap Filler');
+  });
+
   it('puts the chosen recipe on the day', async () => {
     const db = await createTestDb();
     await db.insert(people).values(adult);
