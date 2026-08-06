@@ -35,6 +35,7 @@ export function PickerPanel({
         <input
           name="q"
           defaultValue={query}
+          aria-label="Search recipes by name"
           placeholder="Search by name"
           className="w-full rounded-md border border-line px-2.5 py-1.5 text-sm"
         />
