@@ -6,7 +6,7 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   test: {
-    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'tests/**/*.test.ts'],
     // Several test files spin up a fresh in-memory PGlite (WASM Postgres) instance
     // per test. Too many starting at once (one per worker, up to CPU count) contend
     // for CPU and can blow the default 5s timeout under load. Capping concurrency

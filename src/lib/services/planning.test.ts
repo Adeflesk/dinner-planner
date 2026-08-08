@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createTestDb } from '@/lib/test/db';
 import { eq } from 'drizzle-orm';
 import { people, recipes, settings, plannedDinners, weekPlans } from '@/lib/db/schema';
-import { getWeek, planWeek } from './planning';
+import { getWeek, planWeek, pickerOptions, swapDay } from './planning';
 import { buildList, getList } from './shopping';
 import type { Generator } from '@/lib/ai/recipes';
 import type { RecipeRequest } from '@/lib/ai/recipes';
@@ -117,5 +117,129 @@ describe('two-week window', () => {
     await planWeek(db, '2026-07-13', makeAi([], 'nextweekonly'));
     expect(await getList(db, '2026-07-06')).not.toBeNull();
     expect(await getList(db, '2026-07-13')).toBeNull();
+  });
+});
+
+describe('pickerOptions', () => {
+  const recipeRow = (name: string, source: 'family' | 'ai', createdAt: Date) => ({
+    name, cuisine: 'italian', method: '', servings: 4,
+    perServing: { kcal: 600.4, protein: 40, carbs: 55, fat: 20 },
+    tags: [], equipment: [], source,
+    ingredients: [{ name: 'x', quantity: 1, unit: 'pcs', section: 'other' as const }],
+    createdAt,
+  });
+
+  it('lists favourites before AI dinners, newest first within each group', async () => {
+    const db = await createTestDb();
+    await db.insert(recipes).values([
+      recipeRow('Old Fav', 'family', new Date('2026-01-01')),
+      recipeRow('New Fav', 'family', new Date('2026-06-01')),
+      recipeRow('Old AI', 'ai', new Date('2026-02-01')),
+      recipeRow('New AI', 'ai', new Date('2026-07-01')),
+    ]);
+
+    const opts = await pickerOptions(db, '2026-07-06');
+
+    expect(opts.map((o) => o.name)).toEqual(['New Fav', 'Old Fav', 'New AI', 'Old AI']);
+    expect(opts[0].favourite).toBe(true);
+    expect(opts[3].favourite).toBe(false);
+    expect(opts[0].kcal).toBe(600); // rounded for display
+  });
+
+  it('filters by name case-insensitively; a blank query filters nothing', async () => {
+    const db = await createTestDb();
+    await db.insert(recipes).values([
+      recipeRow('Chicken Katsu', 'family', new Date('2026-01-01')),
+      recipeRow('Beef Rendang', 'family', new Date('2026-01-02')),
+    ]);
+
+    const names = async (q?: string) => (await pickerOptions(db, '2026-07-06', q)).map((o) => o.name);
+
+    expect(await names('chick')).toEqual(['Chicken Katsu']);
+    expect(await names('KATSU')).toEqual(['Chicken Katsu']);
+    expect(await names('   ')).toHaveLength(2);
+    expect(await names()).toHaveLength(2);
+  });
+
+  it('marks the day a recipe occupies this week and ignores other weeks', async () => {
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: [] });
+    await planWeek(db, '2026-07-06', makeAi([]));
+
+    const thisWeek = await pickerOptions(db, '2026-07-06');
+    expect(thisWeek.map((o) => o.plannedDay).sort((a, b) => a! - b!)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+
+    const otherWeek = await pickerOptions(db, '2026-07-13');
+    expect(otherWeek.every((o) => o.plannedDay === null)).toBe(true);
+  });
+
+  it('does not create a week plan row just by looking', async () => {
+    const db = await createTestDb();
+    await db.insert(recipes).values([recipeRow('Solo', 'family', new Date('2026-01-01'))]);
+
+    await pickerOptions(db, '2026-07-06');
+
+    expect(await db.select().from(weekPlans)).toHaveLength(0);
+  });
+});
+
+describe('swapDay by explicit recipe id', () => {
+  it('fills a day that has no dinner at all', async () => {
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: ['steam'] });
+    // Every AI suggestion needs gear the household lacks, so the re-screen rejects
+    // them all: the week plan exists but every day is empty — the gap the Plan
+    // page now offers "Pick manually" on.
+    await planWeek(db, '2026-07-06', makeAi(['sous-vide']));
+    const [chosen] = await db.insert(recipes).values({
+      name: 'Gap Filler', cuisine: 'italian', method: '', servings: 4,
+      perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 },
+      tags: [], equipment: [], source: 'family',
+      ingredients: [{ name: 'x', quantity: 1, unit: 'pcs', section: 'other' }],
+    }).returning();
+
+    const { ok } = await swapDay(db, '2026-07-06', 3, { recipeId: chosen.id });
+
+    expect(ok).toBe(true);
+    const week = await getWeek(db, '2026-07-06');
+    expect(week.dinners.find((d) => d.day === 3)!.recipe.name).toBe('Gap Filler');
+  });
+
+  it('puts the chosen recipe on the day', async () => {
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: [] });
+    await planWeek(db, '2026-07-06', makeAi([]));
+
+    const [chosen] = await db.insert(recipes).values({
+      name: 'Hand Picked', cuisine: 'italian', method: '', servings: 4,
+      perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 },
+      tags: [], equipment: [], source: 'family',
+      ingredients: [{ name: 'x', quantity: 1, unit: 'pcs', section: 'other' }],
+    }).returning();
+
+    const { ok } = await swapDay(db, '2026-07-06', 2, { recipeId: chosen.id });
+
+    expect(ok).toBe(true);
+    const week = await getWeek(db, '2026-07-06');
+    expect(week.dinners.find((d) => d.day === 2)!.recipe.name).toBe('Hand Picked');
+  });
+
+  it('leaves the day untouched when the recipe no longer exists', async () => {
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: [] });
+    await planWeek(db, '2026-07-06', makeAi([]));
+    const before = (await getWeek(db, '2026-07-06')).dinners.find((d) => d.day === 2)!.recipe.name;
+
+    const { ok } = await swapDay(db, '2026-07-06', 2, {
+      recipeId: '00000000-0000-4000-8000-000000000000',
+    });
+
+    expect(ok).toBe(false);
+    const after = (await getWeek(db, '2026-07-06')).dinners.find((d) => d.day === 2)!.recipe.name;
+    expect(after).toBe(before);
   });
 });

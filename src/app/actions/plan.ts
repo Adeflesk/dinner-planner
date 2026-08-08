@@ -27,11 +27,30 @@ export async function planMyWeek(formData: FormData) {
 const SWAP_MODES = ['favourite', 'ai', 'ai-same-cuisine'] as const;
 type SwapMode = typeof SWAP_MODES[number];
 
+// A non-UUID id would make the uuid-typed query throw; treat it as a no-op instead.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function swapDayAction(formData: FormData) {
   const day = Number(formData.get('day'));
   const raw = String(formData.get('mode'));
+  const { weekStart, isNext } = weekFrom(formData);
+
+  // Manual pick: route to swapDay's explicit-recipe mode, then redirect so the
+  // ?pick= / ?q= params drop and the picker panel closes.
+  if (raw === 'pick') {
+    const recipeId = String(formData.get('recipeId'));
+    if (!UUID_RE.test(recipeId)) return; // malformed id — return without changes
+    const { ok } = await swapDay(getDb(), weekStart, day, { recipeId });
+    revalidatePath('/');
+    const params = new URLSearchParams();
+    if (isNext) params.set('week', 'next');
+    if (!ok) params.set('error', 'gone'); // deleted between render and submit
+    const qs = params.toString();
+    redirect(qs ? `/?${qs}` : '/');
+  }
+
   if (!SWAP_MODES.includes(raw as SwapMode)) return;
-  await swapDay(getDb(), weekFrom(formData).weekStart, day, raw as SwapMode);
+  await swapDay(getDb(), weekStart, day, raw as SwapMode);
   revalidatePath('/');
 }
 

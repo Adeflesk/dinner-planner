@@ -223,3 +223,50 @@ export async function getWeek(db: Db, weekStart: string) {
   const tally = weeklyTally(nightly, weeklyTarget);
   return { plan, dinners, tally, weeklyTarget, people: ctx.household, settings: ctx.config };
 }
+
+export type PickerOption = {
+  id: string;
+  name: string;
+  cuisine: string;
+  kcal: number;
+  favourite: boolean;
+  plannedDay: number | null;
+};
+
+/**
+ * Every recipe in the library, for the Plan page's manual picker.
+ * Favourites first, then AI dinners from past plans, each newest-first.
+ * `plannedDay` marks a recipe already on the board THIS week so the UI can
+ * flag a duplicate pick without hiding it.
+ *
+ * Deliberately reads the week plan rather than getOrCreateWeekPlan — merely
+ * opening the picker must not write a row.
+ */
+export async function pickerOptions(
+  db: Db,
+  weekStart: string,
+  query?: string,
+): Promise<PickerOption[]> {
+  const all = await db.select().from(recipes).orderBy(desc(recipes.createdAt));
+  const [plan] = await db.select().from(weekPlans).where(eq(weekPlans.weekStart, weekStart));
+
+  const dayByRecipe = new Map<string, number>();
+  if (plan) {
+    const rows = await db.select().from(plannedDinners).where(eq(plannedDinners.weekPlanId, plan.id));
+    for (const row of rows) dayByRecipe.set(row.recipeId, row.day);
+  }
+
+  const needle = (query ?? '').trim().toLowerCase();
+  return all
+    .filter((r) => needle === '' || r.name.toLowerCase().includes(needle))
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      cuisine: r.cuisine,
+      kcal: Math.round(r.perServing.kcal),
+      favourite: r.source === 'family',
+      plannedDay: dayByRecipe.get(r.id) ?? null,
+    }))
+    // Stable sort (ES2019+): favourites rise, createdAt order survives within each group.
+    .sort((a, b) => Number(b.favourite) - Number(a.favourite));
+}
