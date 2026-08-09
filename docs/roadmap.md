@@ -11,13 +11,17 @@ code.
 Shipped, in order: the core planner (plan/swap/pin, macro engine, shopping
 list, auth), edit-family-members, appliance-aware recipes, ingredient canon,
 two-week planning window (backlog #1 ✅), mark-as-staple (backlog #2 ✅), and
-the recipe detail page with history and editing, and recipe deletion
+the recipe detail page with history and editing, recipe deletion
 (detail-page delete, past-weeks-deletable rule — PR #8, merged 2026-08-01),
-which also fixed the "deleteRecipe silently no-ops" wart from the backlog.
+which also fixed the "deleteRecipe silently no-ops" wart from the backlog,
+and the manual-pick swap (PR #10, merged 2026-08-06).
 
-Health: 161 tests passing in 19 files; the three-layer architecture (pure
+Health: 178 tests passing in 20 files; the three-layer architecture (pure
 macro engine / Db-injected services / thin server actions) is holding with no
-drift observed.
+drift observed. Component tests exist as of PR #10
+(`@testing-library/react` + jsdom, opted into per file so the PGlite suites
+stay on the node environment) — `src/app/(app)/PickerPanel.test.tsx` is the
+worked example to copy for any future UI test.
 
 ## Done since this roadmap was written
 
@@ -39,11 +43,14 @@ drift observed.
    per-week-distinct ingredients, verified to fail when the `weekPlanId`
    filter is removed (the old assertions did not).
 
+6. ~~**"Pick manually" swap**~~ ✅ whole-library picker with name search,
+   rendered once beneath the week grid off `?pick=<day>`; already-planned
+   recipes are marked but stay pickable; empty days gained a control they
+   never had. Spec `2026-08-01-manual-pick-swap-design.md`, plan
+   `2026-08-02-manual-pick-swap.md`.
+
 ## Next (needs a design pass)
 
-6. **"Pick manually" swap** — the `swapDay` service already supports
-   `{ recipeId }` mode but no UI picker exists. Small spec: where the picker
-   lives, favourites-only vs all recipes, no-JS form shape.
 7. **PWA install** (backlog #6) — manifest + icons for a home-screen
    standalone window; the in-store shopping flow is the motivating use.
    Optional later step: offline-cached shopping list.
