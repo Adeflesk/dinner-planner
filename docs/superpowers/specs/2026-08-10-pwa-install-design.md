@@ -11,7 +11,8 @@ with browser chrome eating screen height and no home-screen presence. There
 is no web app manifest, so no browser offers to install it.
 
 Separately, `src/app/favicon.ico` is still the untouched create-next-app
-default — the app currently ships the Next.js logo as its own icon.
+default (25,931 bytes, unchanged since the scaffold commit) — the app
+currently ships the Next.js logo as its own icon.
 
 ## Decision
 
@@ -40,7 +41,7 @@ feature.
 
 ## Artwork
 
-One checked-in master at `public/icon.svg`, from which every raster size is
+One checked-in master at `src/app/icon.svg`, from which every raster size is
 generated:
 
 - Bottle-green `#1f4a38` rounded square, full bleed.
@@ -57,19 +58,30 @@ generated:
 
 | File | Size | Referenced by |
 | --- | --- | --- |
-| `public/icon.svg` | — | nothing; authoring master only |
+| `src/app/icon.svg` | — | Next file convention; also the master |
+| `src/app/apple-icon.png` | 180×180 | Next file convention |
 | `public/icon-192.png` | 192×192 | manifest, `purpose: 'any'` |
 | `public/icon-512.png` | 512×512 | manifest, `purpose: 'any'` |
 | `public/icon-192-maskable.png` | 192×192 | manifest, `purpose: 'maskable'` |
 | `public/icon-512-maskable.png` | 512×512 | manifest, `purpose: 'maskable'` |
-| `src/app/apple-icon.png` | 180×180 | Next file convention |
-| `src/app/favicon.ico` | 16/32/48 | Next file convention |
 
 The Apple icon lives in `src/app/`, **not** `public/`. Next's `apple-icon`
 file convention emits `<link rel="apple-touch-icon">` automatically; a file
 sitting in `public/` would need a hand-written link tag in the layout,
-which is the kind of thing that silently rots. Same reasoning for
-`favicon.ico`, which is already in `src/app/`.
+which is the kind of thing that silently rots.
+
+**There is no `favicon.ico`.** The scaffold one is deleted and replaced by
+`src/app/icon.svg`, which Next links as `<link rel="icon" type="image/svg+xml">`.
+Two reasons: sharp — the only image tool available here — cannot write
+`.ico` at all (verified: its output formats are jpeg, png, webp, tiff, dz,
+gif, heif, vips), so keeping a `.ico` would mean adding a dependency purely
+for a legacy format; and an SVG browser icon is sharper at every size than
+a three-size `.ico`. A request to `/favicon.ico` will 404, which is
+harmless for a private household app on modern phones.
+
+This also means **one SVG, not two**: `src/app/icon.svg` is simultaneously
+the browser icon and the master that every PNG is generated from, so there
+is no second copy to drift.
 
 Maskable variants are separate files rather than dual-purpose entries:
 Android crops maskable icons to an adaptive shape, so the letter needs
