@@ -286,6 +286,15 @@ describe('manifest', () => {
     expect(purposes('192x192')).toEqual(['any', 'maskable']);
     expect(purposes('512x512')).toEqual(['any', 'maskable']);
   });
+
+  // These two are wired by Next's file conventions rather than the manifest, so
+  // nothing else in the suite would notice if they were deleted or renamed.
+  it('keeps the icon files Next links by convention', () => {
+    for (const file of ['icon.svg', 'apple-icon.png']) {
+      const path = join(process.cwd(), 'src', 'app', file);
+      expect(statSync(path).size, `${file} is empty or missing`).toBeGreaterThan(0);
+    }
+  });
 });
 ```
 
