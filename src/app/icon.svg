@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#1f4a38"/>
+  <path fill="#f5f6f1" fill-rule="evenodd" d="
+    M 150 136
+    L 272 136
+    C 350 136, 400 190, 400 256
+    C 400 322, 350 376, 272 376
+    L 150 376
+    L 150 344
+    L 196 344
+    L 196 168
+    L 150 168
+    Z
+    M 244 168
+    L 244 344
+    L 272 344
+    C 328 344, 358 308, 358 256
+    C 358 204, 328 168, 272 168
+    Z
+  "/>
+  <rect x="150" y="404" width="212" height="20" rx="10" fill="#c79a2e"/>
+</svg>
