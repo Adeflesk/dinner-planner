@@ -14,9 +14,10 @@ two-week planning window (backlog #1 ✅), mark-as-staple (backlog #2 ✅), and
 the recipe detail page with history and editing, recipe deletion
 (detail-page delete, past-weeks-deletable rule — PR #8, merged 2026-08-01),
 which also fixed the "deleteRecipe silently no-ops" wart from the backlog,
-and the manual-pick swap (PR #10, merged 2026-08-06).
+the manual-pick swap (PR #10, merged 2026-08-06), and PWA install
+(PR #11, merged 2026-08-18).
 
-Health: 178 tests passing in 20 files; the three-layer architecture (pure
+Health: 196 tests passing in 22 files; the three-layer architecture (pure
 macro engine / Db-injected services / thin server actions) is holding with no
 drift observed. Component tests exist as of PR #10
 (`@testing-library/react` + jsdom, opted into per file so the PGlite suites
@@ -49,11 +50,19 @@ worked example to copy for any future UI test.
    never had. Spec `2026-08-01-manual-pick-swap-design.md`, plan
    `2026-08-02-manual-pick-swap.md`.
 
-## Next (needs a design pass)
+7. ~~**PWA install**~~ ✅ manifest, drawn app mark, and icon set; installs to
+   a home screen and opens standalone. Also deleted the scaffold favicon
+   (there is now no `favicon.ico` — `src/app/icon.svg` covers it, since
+   sharp cannot write `.ico`). The review caught that `/manifest.webmanifest`
+   and `/icon.svg` fell through `src/proxy.ts`'s auth matcher, breaking
+   installability before sign-in; fixed, and `src/proxy.test.ts` now locks
+   the matcher down. Spec `2026-08-10-pwa-install-design.md`, plan
+   `2026-08-11-pwa-install.md`.
+   Still open as a later step: offline-cached shopping list (deliberately
+   deferred — the list is auth-gated and `force-dynamic`, so caching it
+   raises stale-data questions that deserve their own feature).
 
-7. **PWA install** (backlog #6) — manifest + icons for a home-screen
-   standalone window; the in-store shopping flow is the motivating use.
-   Optional later step: offline-cached shopping list.
+## Next (needs a design pass)
 8. **Weeknight/weekend benefit split** (backlog #5) — `dayBenefit` in
    `src/lib/macro/equipment.ts` hardcodes speed Mon–Thu / quality Fri–Sun.
    Decision was to revisit after living with it; if the rhythm doesn't fit,
