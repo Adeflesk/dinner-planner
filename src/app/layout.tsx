@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Schibsted_Grotesk, Spline_Sans_Mono, Young_Serif } from "next/font/google";
 import "./globals.css";
 
@@ -21,6 +21,11 @@ const data = Spline_Sans_Mono({
 export const metadata: Metadata = {
   title: "Dinner Planner",
   description: "Weekly family dinner planner with macro targets",
+  appleWebApp: { capable: true, title: "Dinners", statusBarStyle: "default" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1f4a38",
 };
 
 export default function RootLayout({
