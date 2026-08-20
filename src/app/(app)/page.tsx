@@ -100,11 +100,12 @@ export default async function PlanPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    degraded?: string; planned?: string; week?: string;
+    degraded?: string; planned?: string; week?: string; gaps?: string;
     pick?: string; q?: string; error?: string;
   }>;
 }) {
-  const { degraded, planned, week: weekParam, pick, q, error } = await searchParams;
+  const { degraded, planned, week: weekParam, gaps, pick, q, error } = await searchParams;
+  const missing = Number(gaps) > 0 ? Number(gaps) : 0;
   const isNext = weekParam === 'next';
   const weekRaw = isNext ? 'next' : '';           // hidden-input value; '' resolves to current
   const weekStart = resolveWeekStart(isNext ? 'next' : undefined);
@@ -152,9 +153,17 @@ export default async function PlanPage({
         </p>
       )}
 
-      {planned && (
+      {planned && missing === 0 && (
         <p className="card border-bottle bg-bottle-soft p-3 text-sm">
           Week planned — <Link className="font-medium underline underline-offset-3" href={isNext ? '/shopping?week=next' : '/shopping'}>build your shopping list →</Link>
+        </p>
+      )}
+
+      {missing > 0 && (
+        <p className="card border-dijon bg-dijon-soft p-3 text-sm">
+          Filled {7 - missing} of 7 nights — {missing} couldn&apos;t be generated. Use the swap
+          buttons on those days to fill them.{' '}
+          <Link className="font-medium underline underline-offset-3" href={isNext ? '/shopping?week=next' : '/shopping'}>Build your shopping list →</Link>
         </p>
       )}
 
