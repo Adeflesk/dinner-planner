@@ -17,7 +17,7 @@ which also fixed the "deleteRecipe silently no-ops" wart from the backlog,
 the manual-pick swap (PR #10, merged 2026-08-06), and PWA install
 (PR #11, merged 2026-08-18).
 
-Health: 196 tests passing in 22 files; the three-layer architecture (pure
+Health: 237 tests passing in 24 files; the three-layer architecture (pure
 macro engine / Db-injected services / thin server actions) is holding with no
 drift observed. Component tests exist as of PR #10
 (`@testing-library/react` + jsdom, opted into per file so the PGlite suites
@@ -62,28 +62,56 @@ worked example to copy for any future UI test.
    deferred — the list is auth-gated and `force-dynamic`, so caching it
    raises stale-data questions that deserve their own feature).
 
+8. ~~**Planner variety and gap reporting**~~ ✅ `cuisineSequence` no longer
+   returns `'any'` when no cuisines are configured — a new
+   `src/lib/planner/cuisines.ts` deals balanced, non-adjacent sequences from
+   the household's list or an eight-entry default rotation. `draftWeek` caps
+   each cuisine at `ceil(7 / cuisines)` on the first pass and drops the cap on
+   the last so the cap never creates gaps. The equipment re-screen now strips
+   model-invented tags instead of binning the recipe, which was losing whole
+   dinners whenever kitchen equipment was unticked. `planWeek` returns
+   `{ aiDegraded, filled, gaps }` and the Plan page reports a short week.
+   Failure logging added throughout the AI layer (partially covers item 12).
+   Spec `2026-08-19-planner-variety-and-gaps-design.md`, plan
+   `2026-08-20-planner-variety-and-gaps.md`.
+
 ## Next (needs a design pass)
-8. **Weeknight/weekend benefit split** (backlog #5) — `dayBenefit` in
+9. **Weeknight/weekend benefit split** (backlog #5) — `dayBenefit` in
    `src/lib/macro/equipment.ts` hardcodes speed Mon–Thu / quality Fri–Sun.
    Decision was to revisit after living with it; if the rhythm doesn't fit,
    promote to a household setting on the Family page.
 
 ## Later / opportunistic
 
-9. **AI kcal variation** (backlog #4) — generated dinners echo the exact
-   kcal target from the prompt, making the weekly ✓ self-fulfilling. Prompt
-   for natural variation within the ±10% band, or accept as harmless.
-10. **Login rate limiting** — the login action allows unlimited attempts;
+10. **AI kcal variation** (backlog #4) — generated dinners echo the exact
+    kcal target from the prompt, making the weekly ✓ self-fulfilling. Prompt
+    for natural variation within the ±10% band, or accept as harmless.
+11. **Login rate limiting** — the login action allows unlimited attempts;
     optional hardening for a household app.
-11. **Monitoring** — no log drains / error tracking on the Vercel project;
+12. **Monitoring** — no log drains / error tracking on the Vercel project;
     revisit if debugging prod gets annoying.
-12. **Performance niceties** (from `deployment.md` deferred list) — index on
+13. **Performance niceties** (from `deployment.md` deferred list) — index on
     `recipes.source`; batch the N+1 recipe fetches in `getWeek` with
     `inArray`. Neither is noticeable at household scale.
+
+14. **`swapDay` cuisine choice** — plain `'ai'` mode uses
+    `ctx.config.cuisines[0] ?? 'any'`, always the first configured cuisine, so
+    swapping away from a Mexican dinner can hand back another one. Should use
+    the day's cuisine from the rotation. Deliberately out of scope of the
+    2026-08-19 spec, which covered the drafting path only.
+15. **Near-duplicate recipe names** — dedupe is exact-name only, so "Chicken
+    Tacos" and "Beef Tacos" both stand. The cuisine cap covers most of the
+    observed symptom; fuzzy matching risks false rejections.
+16. **Retry backoff in `generateRecipe`** — retries fire immediately, so a rate
+    limit on a seven-call burst likely hits again. The new `recipe.ai_error`
+    logging will show whether this happens in practice before anything is built.
 
 ## Operational reminders
 
 - If kitchen equipment is still unticked on the Family page, appliance-aware
-  planning is dormant — tick the Miele gear on the live site.
+  planning is dormant — tick the Miele gear on the live site. Since 2026-08-20
+  an unticked kitchen no longer *rejects* AI recipes (invented equipment tags
+  are stripped, not screened), so this costs you appliance-aware methods but
+  not whole dinners.
 - After any `src/lib/db/schema.ts` change: `db:generate` **and** `db:push`
   (tests stay green on PGlite even when Neon is unmigrated).
