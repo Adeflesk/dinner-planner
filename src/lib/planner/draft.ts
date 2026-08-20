@@ -62,6 +62,17 @@ function pickFavourite(
     .sort((a, b) => b.s - a.s || a.i - b.i)[0].f;
 }
 
+/**
+ * What happened to one night's slot. draftWeek is pure and must not log, so it
+ * reports through an injected callback the way it already takes an injected
+ * generator; the service layer decides what to do with these.
+ */
+export type DraftEvent =
+  | { type: 'ai-collision'; day: number; reason: 'duplicate-name' | 'cuisine-cap'; name: string }
+  | { type: 'ai-empty'; day: number }
+  | { type: 'fallback-favourite'; day: number; name: string }
+  | { type: 'gap'; day: number };
+
 export async function draftWeek(opts: {
   favourites: FavouriteRecipe[];
   cuisines: string[];
@@ -70,12 +81,14 @@ export async function draftWeek(opts: {
   vegetarianNights: number;
   equipment?: string[];
   generate: (req: DraftGenerateRequest) => Promise<AiRecipe | null>;
+  onEvent?: (event: DraftEvent) => void;
   rng?: () => number;
 }): Promise<DraftDinner[]> {
   const seq = cuisineSequence(opts.cuisines, 7, opts.rng);
   const used = new Set(opts.recentNames.map((n) => n.toLowerCase()));
   for (const p of opts.pinned.values()) used.add(p.recipe.name.toLowerCase());
   const household = opts.equipment ?? [];
+  const emit = opts.onEvent ?? (() => {});
 
   // Variety guard: the generator is *asked* for a cuisine but self-reports whatever
   // it likes, so the sequence's balance guarantees nothing on its own. Cap each
@@ -148,6 +161,14 @@ export async function draftWeek(opts: {
         countCuisine(ai.cuisine);
         result[slot.day] = { day: slot.day, source: 'ai', recipe: ai };
       } else {
+        if (ai === null) {
+          emit({ type: 'ai-empty', day: slot.day });
+        } else {
+          emit({
+            type: 'ai-collision', day: slot.day, name: ai.name,
+            reason: overCap ? 'cuisine-cap' : 'duplicate-name',
+          });
+        }
         stillPending.push(slot);
       }
     }
@@ -172,6 +193,9 @@ export async function draftWeek(opts: {
       used.add(fav.name.toLowerCase());
       countCuisine(fav.cuisine);
       result[slot.day] = { day: slot.day, source: 'favourite', recipeId: fav.id, recipe: fav };
+      emit({ type: 'fallback-favourite', day: slot.day, name: fav.name });
+    } else {
+      emit({ type: 'gap', day: slot.day });
     }
   }
 

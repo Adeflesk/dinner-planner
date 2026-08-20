@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { draftWeek, vegetarianDays, type FavouriteRecipe } from './draft';
+import { draftWeek, vegetarianDays, type DraftEvent, type FavouriteRecipe } from './draft';
 import type { AiRecipe } from '@/lib/ai/schema';
 
 const fav = (name: string, cuisine: string, tags: string[] = []): FavouriteRecipe => ({
@@ -274,5 +274,82 @@ describe('draftWeek equipment biasing', () => {
     expect(days.find((d) => d.day === 1)?.recipe.name).toBe('Pinned steam bake');
     // The payoff: day 2 avoids a third steam night in a row, choosing the baseline dish.
     expect(days.find((d) => d.day === 2)?.recipe.name).toBe('Baseline pasta');
+  });
+});
+
+describe('draftWeek slot events', () => {
+  const collect = () => {
+    const events: DraftEvent[] = [];
+    return { events, onEvent: (e: DraftEvent) => events.push(e) };
+  };
+
+  it('reports a duplicate name collision', async () => {
+    const { events, onEvent } = collect();
+    await draftWeek({
+      favourites: [], cuisines: ['italian'], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0, onEvent,
+      generate: async () => aiRecipe('Same dish', 'italian'),
+    });
+    const dupes = events.filter((e) => e.type === 'ai-collision' && e.reason === 'duplicate-name');
+    expect(dupes.length).toBeGreaterThan(0);
+  });
+
+  it('reports a cuisine-cap collision', async () => {
+    const { events, onEvent } = collect();
+    let n = 0;
+    await draftWeek({
+      favourites: [], cuisines: [], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0, onEvent,
+      generate: async () => aiRecipe(`Mexican dish ${++n}`, 'mexican'),
+    });
+    const capped = events.filter((e) => e.type === 'ai-collision' && e.reason === 'cuisine-cap');
+    expect(capped).toHaveLength(6); // 8 default cuisines → cap 1; 6 of 7 slots over cap
+  });
+
+  it('reports an empty AI result', async () => {
+    const { events, onEvent } = collect();
+    await draftWeek({
+      favourites: [], cuisines: ['italian'], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0, onEvent,
+      generate: async () => null,
+    });
+    expect(events.filter((e) => e.type === 'ai-empty')).toHaveLength(7);
+  });
+
+  it('reports a favourite used to backfill a failed AI slot', async () => {
+    const { events, onEvent } = collect();
+    // The favourite's cuisine deliberately does NOT match the configured one, so
+    // phase 1's cuisine-matched pick cannot consume it and it is still on the
+    // shelf for phase 3's cuisine-blind fallback. A matching favourite would be
+    // placed in phase 1 and never reach the backfill path at all.
+    await draftWeek({
+      favourites: [fav('Thai green curry', 'thai')], cuisines: ['italian'], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0, onEvent,
+      generate: async () => null,
+    });
+    const backfills = events.filter((e) => e.type === 'fallback-favourite');
+    expect(backfills).toHaveLength(1);
+    expect(backfills[0]).toMatchObject({ type: 'fallback-favourite', name: 'Thai green curry' });
+    // One favourite covers one night; the other six have nothing left.
+    expect(events.filter((e) => e.type === 'gap')).toHaveLength(6);
+  });
+
+  it('reports a night nothing could fill', async () => {
+    const { events, onEvent } = collect();
+    await draftWeek({
+      favourites: [], cuisines: ['italian'], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0, onEvent,
+      generate: async () => null,
+    });
+    expect(events.filter((e) => e.type === 'gap')).toHaveLength(7);
+  });
+
+  it('works without a callback', async () => {
+    const days = await draftWeek({
+      favourites: [], cuisines: ['italian'], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0,
+      generate: async (req) => aiRecipe(`AI ${req.day}`, req.cuisine),
+    });
+    expect(days).toHaveLength(7);
   });
 });
