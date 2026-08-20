@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { generateRecipe, estimateRecipe, type RecipeRequest } from './recipes';
 import type { AiRecipe, MacroEstimate } from './schema';
 
@@ -91,5 +91,73 @@ describe('estimateRecipe', () => {
   });
   it('returns null when the estimator keeps throwing', async () => {
     expect(await estimateRecipe(estimateInput, async () => { throw new Error('timeout'); })).toBeNull();
+  });
+});
+
+describe('generateRecipe failure logging', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const reasons = (spy: ReturnType<typeof vi.spyOn>) =>
+    spy.mock.calls.map((c) => JSON.parse(c[0] as string).evt);
+
+  it('logs why an energy-inconsistent recipe was rejected', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bad = { ...goodRecipe, perServing: { kcal: 100, protein: 40, carbs: 55, fat: 20 } };
+    await generateRecipe(req, async () => bad);
+    expect(reasons(warn)).toContain('recipe.energy_inconsistent');
+    expect(reasons(warn)).toContain('recipe.failed');
+  });
+
+  it('logs an allergy violation with the allergens', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await generateRecipe(
+      req,
+      async () => ({
+        ...goodRecipe,
+        ingredients: [{ name: 'peanut butter', quantity: 1, unit: 'tbsp', section: 'pantry' as const }],
+      }),
+    );
+    const call = warn.mock.calls
+      .map((c) => JSON.parse(c[0] as string))
+      .find((e) => e.evt === 'recipe.allergy_violation');
+    expect(call.allergens).toEqual(['peanut']);
+  });
+
+  it('logs unavailable equipment with what was missing', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await generateRecipe(
+      { ...req, equipment: ['steam'] },
+      async () => ({ ...goodRecipe, equipment: ['sous-vide'] }),
+    );
+    const call = warn.mock.calls
+      .map((c) => JSON.parse(c[0] as string))
+      .find((e) => e.evt === 'recipe.equipment_unavailable');
+    expect(call.missing).toEqual(['sous-vide']);
+  });
+
+  it('distinguishes a timeout from any other thrown error', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await generateRecipe(req, async () => {
+      const e = new Error('aborted');
+      e.name = 'TimeoutError';
+      throw e;
+    });
+    expect(reasons(warn)).toContain('recipe.timeout');
+    expect(reasons(warn)).not.toContain('recipe.ai_error');
+  });
+
+  it('logs a non-timeout throw as an ai_error carrying the message', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await generateRecipe(req, async () => { throw new Error('schema mismatch'); });
+    const call = warn.mock.calls
+      .map((c) => JSON.parse(c[0] as string))
+      .find((e) => e.evt === 'recipe.ai_error');
+    expect(call.message).toBe('schema mismatch');
+  });
+
+  it('says nothing when the recipe is fine', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await generateRecipe(req, async () => goodRecipe);
+    expect(warn).not.toHaveBeenCalled();
   });
 });

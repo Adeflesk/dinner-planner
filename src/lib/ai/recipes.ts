@@ -3,6 +3,7 @@ import type { MacroSet } from '@/lib/macro/types';
 import { energyConsistent, violatesAllergies } from '@/lib/macro/validate';
 import { CAPABILITIES, knownCapabilities, lacksEquipment, type Benefit } from '@/lib/macro/equipment';
 import { aiRecipeSchema, macroEstimateSchema, type AiRecipe, type MacroEstimate } from './schema';
+import { logWarn } from '@/lib/log';
 
 const MODEL = () => process.env.AI_MODEL ?? 'anthropic/claude-haiku-4.5';
 const TIMEOUT_MS = 20_000;
@@ -87,14 +88,44 @@ export async function generateRecipe(
       // does not lose an otherwise good dinner. Real capabilities the kitchen
       // lacks are still a genuine blocker and still reject the recipe.
       const equipment = knownCapabilities(recipe.equipment);
-      if (!energyConsistent(recipe.perServing)) continue;
-      if (violatesAllergies(recipe.ingredients, req.allergies).length > 0) continue;
-      if (lacksEquipment(equipment, req.equipment).length > 0) continue;
+
+      if (!energyConsistent(recipe.perServing)) {
+        const m = recipe.perServing;
+        logWarn('recipe.energy_inconsistent', {
+          cuisine: req.cuisine, attempt,
+          kcal: m.kcal, computed: 4 * m.protein + 4 * m.carbs + 9 * m.fat,
+        });
+        continue;
+      }
+
+      const allergens = violatesAllergies(recipe.ingredients, req.allergies);
+      if (allergens.length > 0) {
+        logWarn('recipe.allergy_violation', { cuisine: req.cuisine, attempt, allergens });
+        continue;
+      }
+
+      const missing = lacksEquipment(equipment, req.equipment);
+      if (missing.length > 0) {
+        logWarn('recipe.equipment_unavailable', { cuisine: req.cuisine, attempt, missing });
+        continue;
+      }
+
       return { ...recipe, equipment };
-    } catch {
-      // timeout / network / schema error — retry once, then give up
+    } catch (err) {
+      // A timeout and a schema error call for different responses, so they are
+      // never collapsed into one reason code.
+      const name = err instanceof Error ? err.name : '';
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        logWarn('recipe.timeout', { cuisine: req.cuisine, attempt });
+      } else {
+        logWarn('recipe.ai_error', {
+          cuisine: req.cuisine, attempt,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
+  logWarn('recipe.failed', { cuisine: req.cuisine, attempts: 2 });
   return null;
 }
 
