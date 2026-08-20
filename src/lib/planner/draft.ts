@@ -1,7 +1,7 @@
 import type { RecipeData } from '@/lib/macro/types';
 import type { AiRecipe } from '@/lib/ai/schema';
 import { scoreFavourite, standoutTags, dayBenefit, type Benefit } from '@/lib/macro/equipment';
-import { cuisineSequence } from './cuisines';
+import { cuisineSequence, effectiveCuisines } from './cuisines';
 
 export type FavouriteRecipe = RecipeData & { id: string };
 export type DraftDinner = {
@@ -77,6 +77,20 @@ export async function draftWeek(opts: {
   for (const p of opts.pinned.values()) used.add(p.recipe.name.toLowerCase());
   const household = opts.equipment ?? [];
 
+  // Variety guard: the generator is *asked* for a cuisine but self-reports whatever
+  // it likes, so the sequence's balance guarantees nothing on its own. Cap each
+  // cuisine at the same share the sequence promises, and count pinned and favourite
+  // dinners toward it so the AI slots see an accurate picture.
+  const cuisineNorm = (c: string) => c.trim().toLowerCase();
+  const allowedPerCuisine = Math.ceil(7 / effectiveCuisines(opts.cuisines).length);
+  const cuisineCount = new Map<string, number>();
+  const countCuisine = (c: string) => {
+    const k = cuisineNorm(c);
+    cuisineCount.set(k, (cuisineCount.get(k) ?? 0) + 1);
+  };
+  const atCap = (c: string) => (cuisineCount.get(cuisineNorm(c)) ?? 0) >= allowedPerCuisine;
+  for (const p of opts.pinned.values()) countCuisine(p.recipe.cuisine);
+
   // Vegetarian nights are chosen up front, and only from days that aren't pinned —
   // a pinned day keeps whatever dinner it already has, so spending the quota on one
   // would silently lose a vegetarian night.
@@ -102,6 +116,7 @@ export async function draftWeek(opts: {
     if (wantFavourite && favMatch) {
       result[day] = { day, source: 'favourite', recipeId: favMatch.id, recipe: favMatch };
       used.add(favMatch.name.toLowerCase());
+      countCuisine(favMatch.cuisine);
     } else {
       aiSlots.push({ day, cuisine, dietTags });
     }
@@ -113,7 +128,6 @@ export async function draftWeek(opts: {
   // retrying would just burn another round of timeouts.
   let pending = aiSlots;
   for (let round = 0; round < 2 && pending.length > 0; round++) {
-    const before = pending.length;
     const results = await Promise.all(
       pending.map((slot) =>
         opts.generate({
@@ -126,15 +140,23 @@ export async function draftWeek(opts: {
     for (let i = 0; i < pending.length; i++) {
       const slot = pending[i];
       const ai = results[i];
-      if (ai && !used.has(ai.name.toLowerCase())) {
+      // The cap applies on the first pass only. On the last pass a monotonous
+      // dinner beats an empty night, so anything that is not a duplicate is taken.
+      const overCap = round === 0 && ai !== null && atCap(ai.cuisine);
+      if (ai && !used.has(ai.name.toLowerCase()) && !overCap) {
         used.add(ai.name.toLowerCase());
+        countCuisine(ai.cuisine);
         result[slot.day] = { day: slot.day, source: 'ai', recipe: ai };
       } else {
         stillPending.push(slot);
       }
     }
     pending = stillPending;
-    if (pending.length === before) break; // no progress → AI unavailable, don't retry
+    // Stop only when AI produced nothing at all — that means it is down, and
+    // retrying would burn another round of timeouts. A round that produced
+    // recipes but rejected them (duplicate names, over-cap cuisines) HAS made
+    // progress worth retrying: the next round sees an updated avoid list.
+    if (results.every((r) => r === null)) break;
   }
 
   // Phase 3 (no I/O): fill any day AI never managed with an unused favourite. A day with
@@ -148,6 +170,7 @@ export async function draftWeek(opts: {
       pickFavourite(opts.favourites, null, used, [], bias);
     if (fav) {
       used.add(fav.name.toLowerCase());
+      countCuisine(fav.cuisine);
       result[slot.day] = { day: slot.day, source: 'favourite', recipeId: fav.id, recipe: fav };
     }
   }

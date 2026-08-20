@@ -137,6 +137,71 @@ describe('draftWeek', () => {
     expect(calls).toBe(7);
   });
 
+  it('rejects an over-cap cuisine in the first round and retries the slot', async () => {
+    // 8 default cuisines (none configured) → cap of ceil(7/8) = 1 per cuisine.
+    // The generator ignores the requested cuisine and always answers Mexican, so
+    // every slot after the first is over cap and must be retried.
+    const asked: string[] = [];
+    let call = 0;
+    await draftWeek({
+      favourites: [], cuisines: [], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0,
+      generate: async (req) => {
+        asked.push(req.cuisine);
+        return aiRecipe(`Mexican dish ${++call}`, 'mexican');
+      },
+    });
+    // 7 slots in round 0; 6 of them are over cap and come back for round 1.
+    expect(asked).toHaveLength(13);
+  });
+
+  it('relaxes the cap in the final round rather than leaving nights empty', async () => {
+    let call = 0;
+    const days = await draftWeek({
+      favourites: [], cuisines: [], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0,
+      generate: async () => aiRecipe(`Mexican dish ${++call}`, 'mexican'),
+    });
+    // A monotonous week beats an empty one: all 7 nights are filled.
+    expect(days).toHaveLength(7);
+    expect(days.every((d) => d.recipe.cuisine === 'mexican')).toBe(true);
+  });
+
+  it('keeps a cooperative generator inside the cap', async () => {
+    let call = 0;
+    const days = await draftWeek({
+      favourites: [], cuisines: [], recentNames: [],
+      pinned: new Map(), vegetarianNights: 0, rng: () => 0,
+      generate: async (req) => aiRecipe(`Dish ${++call}`, req.cuisine),
+    });
+    expect(days).toHaveLength(7);
+    const perCuisine = new Map<string, number>();
+    for (const d of days) {
+      const k = d.recipe.cuisine.toLowerCase();
+      perCuisine.set(k, (perCuisine.get(k) ?? 0) + 1);
+    }
+    // Eight default cuisines over seven nights → every night a different one.
+    expect([...perCuisine.values()].every((n) => n <= 1)).toBe(true);
+  });
+
+  it('counts pinned dinners toward the cap', async () => {
+    const pinnedDinner = {
+      day: 1, source: 'ai' as const, recipeId: 'r1', recipe: aiRecipe('Pinned tacos', 'mexican'),
+    };
+    const asked: string[] = [];
+    await draftWeek({
+      favourites: [], cuisines: [], recentNames: [],
+      pinned: new Map([[1, pinnedDinner]]), vegetarianNights: 0, rng: () => 0,
+      generate: async (req) => {
+        asked.push(req.cuisine);
+        return aiRecipe(`Mexican dish ${asked.length}`, 'mexican');
+      },
+    });
+    // The pin already uses Mexican's single slot, so every one of the 6 AI slots
+    // is over cap in round 0 and retried: 6 + 6 = 12 calls.
+    expect(asked).toHaveLength(12);
+  });
+
   it('generates AI dinners concurrently, not one-at-a-time', async () => {
     let active = 0;
     let maxActive = 0;
