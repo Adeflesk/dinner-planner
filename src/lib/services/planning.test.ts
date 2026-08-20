@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createTestDb } from '@/lib/test/db';
 import { eq } from 'drizzle-orm';
 import { people, recipes, settings, plannedDinners, weekPlans } from '@/lib/db/schema';
@@ -16,6 +16,73 @@ const makeAi = (equipment: string[], ingredient = 'thing'): Generator => async (
   name: `AI ${req.cuisine} ${Math.random()}`, cuisine: req.cuisine, method: 'cook', servings: 4,
   perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 }, tags: req.dietTags, equipment,
   ingredients: [{ name: ingredient, quantity: 1, unit: 'pcs', section: 'other' }],
+});
+
+describe('planWeek gap reporting', () => {
+  it('reports no gaps when every night is filled', async () => {
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: [] });
+
+    const { filled, gaps } = await planWeek(db, '2026-06-29', makeAi([]));
+
+    expect(filled).toBe(7);
+    expect(gaps).toBe(0);
+  });
+
+  it('reports the gaps left when AI fills nothing and there are no favourites', async () => {
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: [] });
+
+    const { aiDegraded, filled, gaps } = await planWeek(db, '2026-06-29', async () => {
+      throw new Error('gateway down');
+    });
+
+    expect(aiDegraded).toBe(true);
+    expect(filled).toBe(0);
+    expect(gaps).toBe(7);
+  });
+
+  it('counts favourite backfills as filled, so a degraded week can still have no gaps', async () => {
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: ['italian'], equipment: [] });
+    for (let i = 0; i < 7; i++) {
+      await db.insert(recipes).values({
+        name: `Favourite ${i}`, cuisine: 'italian', method: '', servings: 4,
+        perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 },
+        tags: [], equipment: [], source: 'family',
+        ingredients: [{ name: 'x', quantity: 1, unit: 'pcs', section: 'other' }],
+      });
+    }
+
+    const { aiDegraded, filled, gaps } = await planWeek(db, '2026-06-29', async () => {
+      throw new Error('gateway down');
+    });
+
+    expect(aiDegraded).toBe(true);
+    expect(filled).toBe(7);
+    expect(gaps).toBe(0);
+  });
+
+  it('logs one summary line carrying the cuisine spread', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const db = await createTestDb();
+    await db.insert(people).values(adult);
+    await db.insert(settings).values({ id: 1, cuisines: [], equipment: [] });
+
+    await planWeek(db, '2026-06-29', makeAi([]));
+
+    const summary = log.mock.calls
+      .map((c) => JSON.parse(c[0] as string))
+      .find((e) => e.evt === 'plan.summary');
+    expect(summary).toMatchObject({ weekStart: '2026-06-29', filled: 7, gaps: 0 });
+    // Eight default cuisines over seven nights → seven distinct, one night each.
+    expect(Object.keys(summary.cuisines)).toHaveLength(7);
+    vi.restoreAllMocks();
+  });
 });
 
 describe('getWeek', () => {

@@ -97,8 +97,8 @@ describe('estimateRecipe', () => {
 describe('generateRecipe failure logging', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  const reasons = (spy: ReturnType<typeof vi.spyOn>) =>
-    spy.mock.calls.map((c) => JSON.parse(c[0] as string).evt);
+  const reasons = (spy: { mock: { calls: unknown[][] } }): string[] =>
+    spy.mock.calls.map((c) => JSON.parse(c[0] as string).evt as string);
 
   it('logs why an energy-inconsistent recipe was rejected', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

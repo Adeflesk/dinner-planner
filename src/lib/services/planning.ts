@@ -6,10 +6,11 @@ import {
 import { dinnerTargets } from '@/lib/macro/targets';
 import { scale, solvePortions } from '@/lib/macro/portions';
 import { weeklyTally, weeklyTargetFor } from '@/lib/macro/tally';
-import { draftWeek, type DraftDinner, type DraftGenerateRequest } from '@/lib/planner/draft';
+import { draftWeek, type DraftDinner, type DraftEvent, type DraftGenerateRequest } from '@/lib/planner/draft';
 import { generateRecipe, aiGenerator, type Generator } from '@/lib/ai/recipes';
 import { dayBenefit } from '@/lib/macro/equipment';
 import type { MacroSet } from '@/lib/macro/types';
+import { logEvent, logWarn } from '@/lib/log';
 
 export async function getSettings(db: Db) {
   // Race-safe: insert-if-absent then read, so concurrent renders can't collide
@@ -86,7 +87,7 @@ export async function planWeek(
   db: Db,
   weekStart: string,
   gen: Generator = aiGenerator,
-): Promise<{ aiDegraded: boolean }> {
+): Promise<{ aiDegraded: boolean; filled: number; gaps: number }> {
   const ctx = await loadContext(db);
   const plan = await getOrCreateWeekPlan(db, weekStart);
 
@@ -131,6 +132,7 @@ export async function planWeek(
     recentNames: recent.map((r) => r.name),
     pinned, vegetarianNights: ctx.config.vegetarianNights,
     equipment: ctx.config.equipment, generate,
+    onEvent: (e: DraftEvent) => logWarn(`plan.${e.type}`, { weekStart, ...e }),
   });
 
   for (const dinner of days) {
@@ -140,7 +142,21 @@ export async function planWeek(
   await pruneOrphanAiRecipes(db);
   // a re-plan invalidates any existing list
   await db.delete(shoppingLists).where(eq(shoppingLists.weekPlanId, plan.id));
-  return { aiDegraded: aiRequested > 0 && aiSucceeded === 0 };
+
+  const cuisines: Record<string, number> = {};
+  for (const d of days) {
+    const k = d.recipe.cuisine.trim().toLowerCase();
+    cuisines[k] = (cuisines[k] ?? 0) + 1;
+  }
+  const filled = days.length;
+  const gaps = 7 - filled;
+  // The one line worth grepping: says in a single record whether a short week
+  // came from AI failures, cap rejections, or an exhausted favourites library.
+  logEvent('plan.summary', {
+    weekStart, requested: aiRequested, succeeded: aiSucceeded, filled, gaps, cuisines,
+  });
+
+  return { aiDegraded: aiRequested > 0 && aiSucceeded === 0, filled, gaps };
 }
 
 /** Replace one day. mode: 'favourite' | 'ai' | 'ai-same-cuisine', or pass an explicit recipeId. */
