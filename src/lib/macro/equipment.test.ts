@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CAPABILITIES, STANDOUT, dayBenefit, standoutTags, lacksEquipment, scoreFavourite,
+  CAPABILITIES, STANDOUT, dayBenefit, standoutTags, knownCapabilities, lacksEquipment, scoreFavourite,
 } from './equipment';
 
 describe('vocabulary', () => {
@@ -64,5 +64,23 @@ describe('scoreFavourite', () => {
   });
   it('ignores standout gear the household does not actually have', () => {
     expect(scoreFavourite({ equipment: ['sous-vide'] }, { day: 0, household: have, prevStandout: [] })).toBe(0);
+  });
+});
+
+describe('knownCapabilities', () => {
+  it('keeps capabilities from the vocabulary', () => {
+    expect(knownCapabilities(['steam', 'air-fry'])).toEqual(['steam', 'air-fry']);
+  });
+  it('drops words the model invented', () => {
+    expect(knownCapabilities(['oven', 'hob', 'steam oven', 'saucepan'])).toEqual([]);
+  });
+  it('normalises case and whitespace', () => {
+    expect(knownCapabilities([' Steam ', 'COMBI-STEAM'])).toEqual(['steam', 'combi-steam']);
+  });
+  it('dedupes', () => {
+    expect(knownCapabilities(['steam', 'Steam'])).toEqual(['steam']);
+  });
+  it('handles an empty list', () => {
+    expect(knownCapabilities([])).toEqual([]);
   });
 });

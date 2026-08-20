@@ -1,7 +1,7 @@
 import { generateObject, gateway } from 'ai';
 import type { MacroSet } from '@/lib/macro/types';
 import { energyConsistent, violatesAllergies } from '@/lib/macro/validate';
-import { CAPABILITIES, lacksEquipment, type Benefit } from '@/lib/macro/equipment';
+import { CAPABILITIES, knownCapabilities, lacksEquipment, type Benefit } from '@/lib/macro/equipment';
 import { aiRecipeSchema, macroEstimateSchema, type AiRecipe, type MacroEstimate } from './schema';
 
 const MODEL = () => process.env.AI_MODEL ?? 'anthropic/claude-haiku-4.5';
@@ -83,10 +83,14 @@ export async function generateRecipe(
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const recipe = await gen(req);
+      // Strip vocabulary the model invented before screening, so a stray "oven"
+      // does not lose an otherwise good dinner. Real capabilities the kitchen
+      // lacks are still a genuine blocker and still reject the recipe.
+      const equipment = knownCapabilities(recipe.equipment);
       if (!energyConsistent(recipe.perServing)) continue;
       if (violatesAllergies(recipe.ingredients, req.allergies).length > 0) continue;
-      if (lacksEquipment(recipe.equipment, req.equipment).length > 0) continue;
-      return recipe;
+      if (lacksEquipment(equipment, req.equipment).length > 0) continue;
+      return { ...recipe, equipment };
     } catch {
       // timeout / network / schema error — retry once, then give up
     }
@@ -123,7 +127,7 @@ export async function estimateRecipe(
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const e = await est(input);
-      if (energyConsistent(e.perServing)) return e;
+      if (energyConsistent(e.perServing)) return { ...e, equipment: knownCapabilities(e.equipment) };
     } catch { /* retry once */ }
   }
   return null;

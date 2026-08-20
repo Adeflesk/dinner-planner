@@ -51,6 +51,20 @@ describe('generateRecipe equipment re-screen', () => {
     const steamy = { ...goodRecipe, equipment: ['steam'] };
     expect(await generateRecipe(req, async () => steamy)).toEqual(steamy);
   });
+  it('strips gear the model invented rather than binning the recipe', async () => {
+    // Household has ticked nothing, and the model answers with generic kit.
+    const gen = async () => ({ ...goodRecipe, equipment: ['oven', 'saucepan'] });
+    const out = await generateRecipe({ ...req, equipment: [] }, gen);
+    expect(out).not.toBeNull();
+    expect(out!.equipment).toEqual([]);
+  });
+
+  it('returns the stripped, normalised equipment array', async () => {
+    const gen = async () => ({ ...goodRecipe, equipment: [' Steam ', 'oven'] });
+    const out = await generateRecipe({ ...req, equipment: ['steam'] }, gen);
+    expect(out!.equipment).toEqual(['steam']);
+  });
+
   it('returns null when every attempt needs unavailable gear', async () => {
     const needsSousVide = { ...goodRecipe, equipment: ['sous-vide'] };
     expect(await generateRecipe(req, async () => needsSousVide)).toBeNull();
