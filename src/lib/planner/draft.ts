@@ -1,6 +1,7 @@
 import type { RecipeData } from '@/lib/macro/types';
 import type { AiRecipe } from '@/lib/ai/schema';
 import { scoreFavourite, standoutTags, dayBenefit, type Benefit } from '@/lib/macro/equipment';
+import { cuisineSequence } from './cuisines';
 
 export type FavouriteRecipe = RecipeData & { id: string };
 export type DraftDinner = {
@@ -17,24 +18,6 @@ export type DraftGenerateRequest = {
   avoidNames: string[];
   preferBenefit: Benefit;
 };
-
-export function cuisineSequence(
-  cuisines: string[],
-  length: number,
-  rng: () => number = Math.random,
-): string[] {
-  if (cuisines.length === 0) return Array(length).fill('any');
-  const seq: string[] = [];
-  let last = '';
-  for (let i = 0; i < length; i++) {
-    let candidates = cuisines.filter((c) => c !== last);
-    if (candidates.length === 0) candidates = cuisines; // single-cuisine household
-    const pick = candidates[Math.floor(rng() * candidates.length)];
-    seq.push(pick);
-    last = pick;
-  }
-  return seq;
-}
 
 /**
  * Which of `availableDays` should be vegetarian. The days are cut into `count`

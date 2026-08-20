@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cuisineSequence, draftWeek, vegetarianDays, type FavouriteRecipe } from './draft';
+import { draftWeek, vegetarianDays, type FavouriteRecipe } from './draft';
 import type { AiRecipe } from '@/lib/ai/schema';
 
 const fav = (name: string, cuisine: string, tags: string[] = []): FavouriteRecipe => ({
@@ -16,20 +16,6 @@ const aiRecipe = (name: string, cuisine: string, tags: string[] = []): AiRecipe 
   name, cuisine, method: 'cook', servings: 4,
   perServing: { kcal: 600, protein: 40, carbs: 55, fat: 20 }, tags, equipment: [],
   ingredients: [{ name: 'y', quantity: 1, unit: 'pcs', section: 'other' }],
-});
-
-describe('cuisineSequence', () => {
-  it('never schedules the same cuisine on adjacent days (≥2 cuisines)', () => {
-    const seq = cuisineSequence(['indian', 'mexican', 'italian'], 7, () => 0);
-    expect(seq).toHaveLength(7);
-    for (let i = 1; i < 7; i++) expect(seq[i]).not.toBe(seq[i - 1]);
-  });
-  it('allows repeats with a single cuisine', () => {
-    expect(cuisineSequence(['italian'], 3, () => 0)).toEqual(['italian', 'italian', 'italian']);
-  });
-  it("returns 'any' slots when no cuisines configured", () => {
-    expect(cuisineSequence([], 2, () => 0)).toEqual(['any', 'any']);
-  });
 });
 
 describe('vegetarianDays', () => {
