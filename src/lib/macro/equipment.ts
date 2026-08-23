@@ -37,6 +37,18 @@ export function standoutTags(equipment: string[]): string[] {
 }
 
 /**
+ * The recipe-equipment entries that are actually part of the capability
+ * vocabulary, normalised and deduped. Models routinely answer with generic gear
+ * ("oven", "hob", "saucepan") that no household ticks; those are noise, not a
+ * cooking requirement, and screening a recipe out over them throws away a good
+ * dinner. Mirrors standoutTags in shape.
+ */
+export function knownCapabilities(equipment: string[]): string[] {
+  const known = new Set<string>(CAPABILITIES.map(norm));
+  return [...new Set(equipment.map(norm))].filter((e) => known.has(e));
+}
+
+/**
  * Capabilities a recipe needs that the household does not have. Empty array means
  * the recipe is cookable here. Mirrors validate.ts#violatesAllergies.
  */

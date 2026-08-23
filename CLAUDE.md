@@ -39,7 +39,7 @@ Single deployable Next.js app on Vercel; Neon Postgres via Drizzle ORM. Three st
 2. **Services** (`src/lib/services/`, `src/lib/planner/`, `src/lib/ai/`) — orchestration. Services take a `Db` parameter (driver-agnostic type from `src/lib/db`) so the same code runs against Neon in prod and PGlite in tests. AI functions take an injectable generator parameter defaulting to the real AI SDK call — tests pass fakes, never hit live models.
 3. **Server actions + pages** (`src/app/`) — thin wrappers: parse `FormData`, call a service with `getDb()`, `revalidatePath`. No business logic here. UI is server components with plain forms; client JS is avoided.
 
-AI calls use AI SDK v6 `generateObject` with Zod schemas through AI Gateway plain model strings (default `anthropic/claude-haiku-4.5`, override with `AI_MODEL`). Every AI recipe is validated in code (kcal ≈ 4·protein + 4·carbs + 9·fat ±15%, allergy re-screen) and silently regenerated once on failure; AI being down must never block planning — fall back to favourites-only and surface a notice.
+AI calls use AI SDK v6 `generateObject` with Zod schemas through AI Gateway plain model strings (default `anthropic/claude-haiku-4.5`, override with `AI_MODEL`). Every AI recipe is validated in code (kcal ≈ 4·protein + 4·carbs + 9·fat ±15%, allergy re-screen, equipment re-screen) and regenerated once on failure, with the reason logged via `src/lib/log.ts`; AI being down must never block planning — fall back to favourites-only and surface a notice. Equipment tags outside the `CAPABILITIES` vocabulary are stripped rather than rejected. Cuisines come from `src/lib/planner/cuisines.ts`, which never yields a placeholder — the planner must never ask the model for "any cuisine".
 
 ## Conventions
 

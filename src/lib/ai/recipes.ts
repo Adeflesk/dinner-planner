@@ -1,8 +1,9 @@
 import { generateObject, gateway } from 'ai';
 import type { MacroSet } from '@/lib/macro/types';
 import { energyConsistent, violatesAllergies } from '@/lib/macro/validate';
-import { CAPABILITIES, lacksEquipment, type Benefit } from '@/lib/macro/equipment';
+import { CAPABILITIES, knownCapabilities, lacksEquipment, type Benefit } from '@/lib/macro/equipment';
 import { aiRecipeSchema, macroEstimateSchema, type AiRecipe, type MacroEstimate } from './schema';
+import { logWarn } from '@/lib/log';
 
 const MODEL = () => process.env.AI_MODEL ?? 'anthropic/claude-haiku-4.5';
 const TIMEOUT_MS = 20_000;
@@ -83,14 +84,48 @@ export async function generateRecipe(
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const recipe = await gen(req);
-      if (!energyConsistent(recipe.perServing)) continue;
-      if (violatesAllergies(recipe.ingredients, req.allergies).length > 0) continue;
-      if (lacksEquipment(recipe.equipment, req.equipment).length > 0) continue;
-      return recipe;
-    } catch {
-      // timeout / network / schema error — retry once, then give up
+      // Strip vocabulary the model invented before screening, so a stray "oven"
+      // does not lose an otherwise good dinner. Real capabilities the kitchen
+      // lacks are still a genuine blocker and still reject the recipe.
+      const equipment = knownCapabilities(recipe.equipment);
+
+      if (!energyConsistent(recipe.perServing)) {
+        const m = recipe.perServing;
+        logWarn('recipe.energy_inconsistent', {
+          cuisine: req.cuisine, attempt,
+          kcal: m.kcal, computed: 4 * m.protein + 4 * m.carbs + 9 * m.fat,
+        });
+        continue;
+      }
+
+      const allergens = violatesAllergies(recipe.ingredients, req.allergies);
+      if (allergens.length > 0) {
+        logWarn('recipe.allergy_violation', { cuisine: req.cuisine, attempt, allergens });
+        continue;
+      }
+
+      const missing = lacksEquipment(equipment, req.equipment);
+      if (missing.length > 0) {
+        logWarn('recipe.equipment_unavailable', { cuisine: req.cuisine, attempt, missing });
+        continue;
+      }
+
+      return { ...recipe, equipment };
+    } catch (err) {
+      // A timeout and a schema error call for different responses, so they are
+      // never collapsed into one reason code.
+      const name = err instanceof Error ? err.name : '';
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        logWarn('recipe.timeout', { cuisine: req.cuisine, attempt });
+      } else {
+        logWarn('recipe.ai_error', {
+          cuisine: req.cuisine, attempt,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
+  logWarn('recipe.failed', { cuisine: req.cuisine, attempts: 2 });
   return null;
 }
 
@@ -123,7 +158,7 @@ export async function estimateRecipe(
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const e = await est(input);
-      if (energyConsistent(e.perServing)) return e;
+      if (energyConsistent(e.perServing)) return { ...e, equipment: knownCapabilities(e.equipment) };
     } catch { /* retry once */ }
   }
   return null;

@@ -18,10 +18,11 @@ const weekFrom = (formData: FormData) => {
 
 export async function planMyWeek(formData: FormData) {
   const { weekStart, isNext } = weekFrom(formData);
-  const { aiDegraded } = await planWeek(getDb(), weekStart);
+  const { aiDegraded, gaps } = await planWeek(getDb(), weekStart);
   revalidatePath('/');
   const wk = isNext ? '&week=next' : '';
-  redirect(aiDegraded ? `/?degraded=1${wk}` : `/?planned=1${wk}`);
+  const shortfall = gaps > 0 ? `&gaps=${gaps}` : '';
+  redirect(aiDegraded ? `/?degraded=1${wk}${shortfall}` : `/?planned=1${wk}${shortfall}`);
 }
 
 const SWAP_MODES = ['favourite', 'ai', 'ai-same-cuisine'] as const;

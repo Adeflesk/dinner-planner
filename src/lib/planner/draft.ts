@@ -1,6 +1,7 @@
 import type { RecipeData } from '@/lib/macro/types';
 import type { AiRecipe } from '@/lib/ai/schema';
 import { scoreFavourite, standoutTags, dayBenefit, type Benefit } from '@/lib/macro/equipment';
+import { cuisineSequence, effectiveCuisines } from './cuisines';
 
 export type FavouriteRecipe = RecipeData & { id: string };
 export type DraftDinner = {
@@ -17,24 +18,6 @@ export type DraftGenerateRequest = {
   avoidNames: string[];
   preferBenefit: Benefit;
 };
-
-export function cuisineSequence(
-  cuisines: string[],
-  length: number,
-  rng: () => number = Math.random,
-): string[] {
-  if (cuisines.length === 0) return Array(length).fill('any');
-  const seq: string[] = [];
-  let last = '';
-  for (let i = 0; i < length; i++) {
-    let candidates = cuisines.filter((c) => c !== last);
-    if (candidates.length === 0) candidates = cuisines; // single-cuisine household
-    const pick = candidates[Math.floor(rng() * candidates.length)];
-    seq.push(pick);
-    last = pick;
-  }
-  return seq;
-}
 
 /**
  * Which of `availableDays` should be vegetarian. The days are cut into `count`
@@ -79,6 +62,17 @@ function pickFavourite(
     .sort((a, b) => b.s - a.s || a.i - b.i)[0].f;
 }
 
+/**
+ * What happened to one night's slot. draftWeek is pure and must not log, so it
+ * reports through an injected callback the way it already takes an injected
+ * generator; the service layer decides what to do with these.
+ */
+export type DraftEvent =
+  | { type: 'ai-collision'; day: number; reason: 'duplicate-name' | 'cuisine-cap'; name: string }
+  | { type: 'ai-empty'; day: number }
+  | { type: 'fallback-favourite'; day: number; name: string }
+  | { type: 'gap'; day: number };
+
 export async function draftWeek(opts: {
   favourites: FavouriteRecipe[];
   cuisines: string[];
@@ -87,12 +81,28 @@ export async function draftWeek(opts: {
   vegetarianNights: number;
   equipment?: string[];
   generate: (req: DraftGenerateRequest) => Promise<AiRecipe | null>;
+  onEvent?: (event: DraftEvent) => void;
   rng?: () => number;
 }): Promise<DraftDinner[]> {
   const seq = cuisineSequence(opts.cuisines, 7, opts.rng);
   const used = new Set(opts.recentNames.map((n) => n.toLowerCase()));
   for (const p of opts.pinned.values()) used.add(p.recipe.name.toLowerCase());
   const household = opts.equipment ?? [];
+  const emit = opts.onEvent ?? (() => {});
+
+  // Variety guard: the generator is *asked* for a cuisine but self-reports whatever
+  // it likes, so the sequence's balance guarantees nothing on its own. Cap each
+  // cuisine at the same share the sequence promises, and count pinned and favourite
+  // dinners toward it so the AI slots see an accurate picture.
+  const cuisineNorm = (c: string) => c.trim().toLowerCase();
+  const allowedPerCuisine = Math.ceil(7 / effectiveCuisines(opts.cuisines).length);
+  const cuisineCount = new Map<string, number>();
+  const countCuisine = (c: string) => {
+    const k = cuisineNorm(c);
+    cuisineCount.set(k, (cuisineCount.get(k) ?? 0) + 1);
+  };
+  const atCap = (c: string) => (cuisineCount.get(cuisineNorm(c)) ?? 0) >= allowedPerCuisine;
+  for (const p of opts.pinned.values()) countCuisine(p.recipe.cuisine);
 
   // Vegetarian nights are chosen up front, and only from days that aren't pinned —
   // a pinned day keeps whatever dinner it already has, so spending the quota on one
@@ -119,6 +129,7 @@ export async function draftWeek(opts: {
     if (wantFavourite && favMatch) {
       result[day] = { day, source: 'favourite', recipeId: favMatch.id, recipe: favMatch };
       used.add(favMatch.name.toLowerCase());
+      countCuisine(favMatch.cuisine);
     } else {
       aiSlots.push({ day, cuisine, dietTags });
     }
@@ -130,7 +141,6 @@ export async function draftWeek(opts: {
   // retrying would just burn another round of timeouts.
   let pending = aiSlots;
   for (let round = 0; round < 2 && pending.length > 0; round++) {
-    const before = pending.length;
     const results = await Promise.all(
       pending.map((slot) =>
         opts.generate({
@@ -143,15 +153,31 @@ export async function draftWeek(opts: {
     for (let i = 0; i < pending.length; i++) {
       const slot = pending[i];
       const ai = results[i];
-      if (ai && !used.has(ai.name.toLowerCase())) {
+      // The cap applies on the first pass only. On the last pass a monotonous
+      // dinner beats an empty night, so anything that is not a duplicate is taken.
+      const overCap = round === 0 && ai !== null && atCap(ai.cuisine);
+      if (ai && !used.has(ai.name.toLowerCase()) && !overCap) {
         used.add(ai.name.toLowerCase());
+        countCuisine(ai.cuisine);
         result[slot.day] = { day: slot.day, source: 'ai', recipe: ai };
       } else {
+        if (ai === null) {
+          emit({ type: 'ai-empty', day: slot.day });
+        } else {
+          emit({
+            type: 'ai-collision', day: slot.day, name: ai.name,
+            reason: overCap ? 'cuisine-cap' : 'duplicate-name',
+          });
+        }
         stillPending.push(slot);
       }
     }
     pending = stillPending;
-    if (pending.length === before) break; // no progress → AI unavailable, don't retry
+    // Stop only when AI produced nothing at all — that means it is down, and
+    // retrying would burn another round of timeouts. A round that produced
+    // recipes but rejected them (duplicate names, over-cap cuisines) HAS made
+    // progress worth retrying: the next round sees an updated avoid list.
+    if (results.every((r) => r === null)) break;
   }
 
   // Phase 3 (no I/O): fill any day AI never managed with an unused favourite. A day with
@@ -165,7 +191,11 @@ export async function draftWeek(opts: {
       pickFavourite(opts.favourites, null, used, [], bias);
     if (fav) {
       used.add(fav.name.toLowerCase());
+      countCuisine(fav.cuisine);
       result[slot.day] = { day: slot.day, source: 'favourite', recipeId: fav.id, recipe: fav };
+      emit({ type: 'fallback-favourite', day: slot.day, name: fav.name });
+    } else {
+      emit({ type: 'gap', day: slot.day });
     }
   }
 
