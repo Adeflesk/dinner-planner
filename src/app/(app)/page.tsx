@@ -8,6 +8,7 @@ import { WeekTabs } from './WeekTabs';
 import { PickLink, PickerPanel } from './PickerPanel';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 const MACROS = ['kcal', 'protein', 'carbs', 'fat'] as const;
 const STATUS_ICON = { ok: '✓', over: '▲', under: '▼' } as const;

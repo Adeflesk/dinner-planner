@@ -9,13 +9,20 @@ import { canonicalName } from '@/lib/macro/canon';
 async function weekScaledRecipes(db: Db, weekStart: string): Promise<ScaledRecipe[]> {
   const [plan] = await db.select().from(weekPlans).where(eq(weekPlans.weekStart, weekStart));
   if (!plan) return [];
-  const rows = await db.select().from(plannedDinners).where(eq(plannedDinners.weekPlanId, plan.id));
-  const out: ScaledRecipe[] = [];
-  for (const row of rows) {
-    const [recipe] = await db.select().from(recipes).where(eq(recipes.id, row.recipeId));
-    if (recipe) out.push({ ingredients: recipe.ingredients, scale: row.householdServings / recipe.servings });
-  }
-  return out;
+  const rows = await db
+    .select({
+      householdServings: plannedDinners.householdServings,
+      servings: recipes.servings,
+      ingredients: recipes.ingredients,
+    })
+    .from(plannedDinners)
+    .innerJoin(recipes, eq(plannedDinners.recipeId, recipes.id))
+    .where(eq(plannedDinners.weekPlanId, plan.id));
+
+  return rows.map((r) => ({
+    ingredients: r.ingredients,
+    scale: r.householdServings / r.servings,
+  }));
 }
 
 /** Whether any dinner is planned this week — drives the shopping page's empty-state copy. */

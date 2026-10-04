@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, ilike, notExists } from 'drizzle-orm';
 import type { Db } from '@/lib/db';
 import {
   people, plannedDinners, recipes, settings, shoppingLists, weekPlans,
@@ -57,12 +57,16 @@ async function loadContext(db: Db) {
  * unbounded. Promoted recipes are safe — promotion flips source to 'family'.
  */
 async function pruneOrphanAiRecipes(db: Db) {
-  const aiRecipes = await db.select({ id: recipes.id }).from(recipes).where(eq(recipes.source, 'ai'));
-  const referenced = new Set(
-    (await db.select({ recipeId: plannedDinners.recipeId }).from(plannedDinners)).map((r) => r.recipeId),
+  await db.delete(recipes).where(
+    and(
+      eq(recipes.source, 'ai'),
+      notExists(
+        db.select({ id: plannedDinners.id })
+          .from(plannedDinners)
+          .where(eq(plannedDinners.recipeId, recipes.id)),
+      ),
+    ),
   );
-  const orphans = aiRecipes.filter((r) => !referenced.has(r.id)).map((r) => r.id);
-  if (orphans.length) await db.delete(recipes).where(inArray(recipes.id, orphans));
 }
 
 async function persistDinner(
@@ -91,11 +95,16 @@ export async function planWeek(
   const ctx = await loadContext(db);
   const plan = await getOrCreateWeekPlan(db, weekStart);
 
-  const existing = await db.select().from(plannedDinners).where(eq(plannedDinners.weekPlanId, plan.id));
-  const pinnedRows = existing.filter((d) => d.pinned);
+  const existing = await db
+    .select({
+      dinner: plannedDinners,
+      recipe: recipes,
+    })
+    .from(plannedDinners)
+    .innerJoin(recipes, eq(plannedDinners.recipeId, recipes.id))
+    .where(eq(plannedDinners.weekPlanId, plan.id));
   const pinned = new Map<number, DraftDinner>();
-  for (const row of pinnedRows) {
-    const [r] = await db.select().from(recipes).where(eq(recipes.id, row.recipeId));
+  for (const { dinner: row, recipe: r } of existing.filter((e) => e.dinner.pinned)) {
     pinned.set(row.day, { day: row.day, source: r.source === 'ai' ? 'ai' : 'favourite', recipeId: r.id, recipe: r });
   }
   await db.delete(plannedDinners).where(
@@ -169,16 +178,17 @@ export async function swapDay(
 ): Promise<{ ok: boolean }> {
   const ctx = await loadContext(db);
   const plan = await getOrCreateWeekPlan(db, weekStart);
-  const week = await db.select().from(plannedDinners).where(eq(plannedDinners.weekPlanId, plan.id));
-  const current = week.find((d) => d.day === day);
-  const currentRecipe = current
-    ? (await db.select().from(recipes).where(eq(recipes.id, current.recipeId)))[0]
-    : null;
-  const usedNames = new Set<string>();
-  for (const d of week) {
-    const [r] = await db.select().from(recipes).where(eq(recipes.id, d.recipeId));
-    if (r) usedNames.add(r.name.toLowerCase());
-  }
+  const weekRows = await db
+    .select({
+      dinner: plannedDinners,
+      recipe: recipes,
+    })
+    .from(plannedDinners)
+    .innerJoin(recipes, eq(plannedDinners.recipeId, recipes.id))
+    .where(eq(plannedDinners.weekPlanId, plan.id));
+  const current = weekRows.find((r) => r.dinner.day === day);
+  const currentRecipe = current ? current.recipe : null;
+  const usedNames = new Set<string>(weekRows.map((r) => r.recipe.name.toLowerCase()));
 
   let replacement: DraftDinner | null = null;
   if (typeof mode === 'object') {
@@ -225,13 +235,19 @@ export async function togglePin(db: Db, weekStart: string, day: number): Promise
 export async function getWeek(db: Db, weekStart: string) {
   const ctx = await loadContext(db);
   const plan = await getOrCreateWeekPlan(db, weekStart);
-  const rows = await db.select().from(plannedDinners).where(eq(plannedDinners.weekPlanId, plan.id));
-  const dinners = await Promise.all(
-    rows.sort((a, b) => a.day - b.day).map(async (row) => {
-      const [recipe] = await db.select().from(recipes).where(eq(recipes.id, row.recipeId));
-      return { ...row, recipe };
-    }),
-  );
+  const rows = await db
+    .select({
+      dinner: plannedDinners,
+      recipe: recipes,
+    })
+    .from(plannedDinners)
+    .innerJoin(recipes, eq(plannedDinners.recipeId, recipes.id))
+    .where(eq(plannedDinners.weekPlanId, plan.id))
+    .orderBy(plannedDinners.day);
+  const dinners = rows.map((r) => ({
+    ...r.dinner,
+    recipe: r.recipe,
+  }));
   const nightly = dinners.map((d) => scale(d.recipe.perServing, d.householdServings));
   // Compare against the target for the number of nights actually planned, not a fixed 7 —
   // otherwise a partially-filled week always reads "under".
@@ -263,18 +279,34 @@ export async function pickerOptions(
   weekStart: string,
   query?: string,
 ): Promise<PickerOption[]> {
-  const all = await db.select().from(recipes).orderBy(desc(recipes.createdAt));
+  const needle = (query ?? '').trim();
+  const baseQuery = db
+    .select({
+      id: recipes.id,
+      name: recipes.name,
+      cuisine: recipes.cuisine,
+      perServing: recipes.perServing,
+      source: recipes.source,
+      createdAt: recipes.createdAt,
+    })
+    .from(recipes);
+
+  const all = needle
+    ? await baseQuery.where(ilike(recipes.name, `%${needle}%`)).orderBy(desc(recipes.createdAt))
+    : await baseQuery.orderBy(desc(recipes.createdAt));
+
   const [plan] = await db.select().from(weekPlans).where(eq(weekPlans.weekStart, weekStart));
 
   const dayByRecipe = new Map<string, number>();
   if (plan) {
-    const rows = await db.select().from(plannedDinners).where(eq(plannedDinners.weekPlanId, plan.id));
+    const rows = await db
+      .select({ recipeId: plannedDinners.recipeId, day: plannedDinners.day })
+      .from(plannedDinners)
+      .where(eq(plannedDinners.weekPlanId, plan.id));
     for (const row of rows) dayByRecipe.set(row.recipeId, row.day);
   }
 
-  const needle = (query ?? '').trim().toLowerCase();
   return all
-    .filter((r) => needle === '' || r.name.toLowerCase().includes(needle))
     .map((r) => ({
       id: r.id,
       name: r.name,
