@@ -5,7 +5,7 @@ import { CAPABILITIES, knownCapabilities, lacksEquipment, type Benefit } from '@
 import { aiRecipeSchema, macroEstimateSchema, type AiRecipe, type MacroEstimate } from './schema';
 import { logWarn } from '@/lib/log';
 
-const MODEL = () => process.env.AI_MODEL ?? 'anthropic/claude-haiku-4.5';
+const MODEL = () => process.env.AI_MODEL ?? 'google/gemini-2.5-flash-lite';
 const TIMEOUT_MS = 20_000;
 
 // Steer ingredient names/units toward a canonical form so the shopping-list aggregator
