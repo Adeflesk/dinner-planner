@@ -3,9 +3,12 @@ import type { MacroSet } from '@/lib/macro/types';
 import { energyConsistent, violatesAllergies } from '@/lib/macro/validate';
 import { CAPABILITIES, knownCapabilities, lacksEquipment, type Benefit } from '@/lib/macro/equipment';
 import { aiRecipeSchema, macroEstimateSchema, type AiRecipe, type MacroEstimate } from './schema';
-import { logWarn } from '@/lib/log';
+import { logEvent, logWarn } from '@/lib/log';
 
-const MODEL = () => process.env.AI_MODEL ?? 'google/gemini-2.5-flash-lite';
+const MODEL = () => {
+  const m = process.env.AI_MODEL?.trim();
+  return m ? m : 'google/gemini-2.5-flash-lite';
+};
 const TIMEOUT_MS = 20_000;
 
 // Steer ingredient names/units toward a canonical form so the shopping-list aggregator
@@ -67,8 +70,10 @@ function buildPrompt(req: RecipeRequest): string {
 }
 
 export const aiGenerator: Generator = async (req) => {
+  const modelName = MODEL();
+  logEvent('recipe.ai_invoke', { model: modelName, cuisine: req.cuisine });
   const { object } = await generateObject({
-    model: gateway(MODEL()),
+    model: gateway(modelName),
     schema: aiRecipeSchema,
     prompt: buildPrompt(req),
     abortSignal: AbortSignal.timeout(TIMEOUT_MS),
@@ -132,8 +137,10 @@ export async function generateRecipe(
 export type Estimator = (input: { name: string; servings: number; ingredientLines: string }) => Promise<MacroEstimate>;
 
 export const aiEstimator: Estimator = async (input) => {
+  const modelName = MODEL();
+  logEvent('recipe.estimate_invoke', { model: modelName, recipe: input.name });
   const { object } = await generateObject({
-    model: gateway(MODEL()),
+    model: gateway(modelName),
     schema: macroEstimateSchema,
     prompt: [
       `Estimate per-serving macros for "${input.name}" (${input.servings} servings) and structure its ingredients.`,
