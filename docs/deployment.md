@@ -77,9 +77,9 @@ Expected output: Drizzle reports all 7 tables created (`people`, `recipes`, `wee
 
 In the Vercel dashboard for your project: **Settings → AI → Enable AI Gateway**.
 
-Set a **budget alert** and a **hard monthly cap (~$5)** — the spec requires this. Expected spend is well under $1/month at household scale (~60 recipe generation calls/month using `anthropic/claude-haiku-4.5`).
+Set a **budget alert** and a **hard monthly cap (~$5)** — the spec requires this. Expected spend is well under $0.10/month at household scale (~60 recipe generation calls/month using `google/gemini-2.5-flash-lite`).
 
-The model string in the code (`anthropic/claude-haiku-4.5`, overridable via `AI_MODEL` env var) routes through the gateway automatically once it's enabled.
+The model string in the code (`google/gemini-2.5-flash-lite`, overridable via `AI_MODEL` env var) routes through the gateway automatically once it's enabled.
 
 ---
 

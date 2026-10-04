@@ -31,6 +31,39 @@ npm run db:push                           # apply schema to Neon
 
 Local env lives in `.env.local`: `DATABASE_URL` (Neon), `HOUSEHOLD_PASSWORD`, `AUTH_SECRET`, optional `AI_MODEL`. Tests need none of these — integration tests run on PGlite (in-memory Postgres) and all AI calls are faked.
 
+## Verification
+
+- Run `npm test && npx tsc --noEmit` before opening or merging any PR. There is **no** `npm run typecheck` script — `npx tsc --noEmit` is the type gate. Add `npm run build` when the change touches `src/app/`.
+- The test count must never decrease: **237 tests in 24 files** as of 2026-09-05. A PR that lowers it has deleted coverage, not simplified it.
+- A green suite proves nothing about production. All AI is faked in tests, so AI-path changes are unverified until probed against the live gateway — see Production Environment.
+
+## Production Environment
+
+Verified 2026-10-04. Re-check before trusting any of it.
+
+- **The AI Gateway account is on the free tier with a restricted model allowlist.** Never change `AI_MODEL` to "fix" a production AI failure without first confirming the target is reachable on the current plan — a wrong swap turns degraded recipes into no recipes. Check with `curl -s https://ai-gateway.vercel.sh/v1/models?include_availability` (with auth token), then actually call the model; the allowlist is narrower than the catalogue.
+  - Active & recommended: `google/gemini-2.5-flash-lite` (fast ~1-2s latency, lowest token cost, 100% free tier eligible).
+  - Reachable but slow: `google/gemini-2.5-flash` (~16s latency, close to timeout).
+  - **500/404 EOL:** `anthropic/claude-3-haiku` (upstream AWS Bedrock returned End-of-Life; Vertex Anthropic 500 error).
+  - **403 Forbidden:** `anthropic/claude-haiku-4.5`, `anthropic/claude-sonnet-5`, `google/gemini-3-flash` (all `plan_restricted` on free tier).
+  - **Schema incompatible:** `openai/gpt-4o-mini` (strict mode rejects `.default([])` optional fields in Zod schema).
+- **The free-tier rate limit is low** — a handful of calls exhausts it, and the error changes from 403 to "requests on this model are rate-limited". Probe sparingly; you are spending the app's quota.
+- **`AI_MODEL` is set across Production, Preview, and Development** to `google/gemini-2.5-flash-lite`. Pull the real value with `vercel env pull <scratch-path> --environment=production` before diagnosing.
+- Vercel env values are masked in `vercel env ls`. To read them, pull to a file **in the scratchpad** (never into the repo) and delete it afterwards.
+- Runtime logs are retained ~1 hour on the Hobby plan, so `src/lib/log.ts` output is only readable live. Reproduce the failure while watching, or add a drain.
+
+## Workflow
+
+- Default flow for any feature or bugfix: short spec/plan → approval → branch → tests → PR → merge. See the cycle in Project above. **Never commit directly to `master`** (the default branch is `master`, not `main`).
+- Specs must only reference assets this repo can actually generate. Notably, sharp cannot write `.ico`, so never specify a binary `favicon.ico` without a build step — `src/app/icon.svg` covers it.
+- When writing a roadmap or spec, flag any item that depends on an external service, paid tier, or quota, and validate that dependency **before** implementation. The 2026-08 planner work shipped fully before anyone checked that the gateway would serve the model.
+
+## Testing conventions
+
+- React Testing Library tests opt in per file (jsdom) so the PGlite suites stay on the node environment. `src/app/(app)/PickerPanel.test.tsx` is the worked example to copy.
+- RTL tests must unmount between cases — verify the harness cleans up, or state leaks across tests in the same file.
+- Never hit a live model from a test. AI functions take an injectable generator; pass a fake.
+
 ## Architecture
 
 Single deployable Next.js app on Vercel; Neon Postgres via Drizzle ORM. Three strict layers:
@@ -39,7 +72,7 @@ Single deployable Next.js app on Vercel; Neon Postgres via Drizzle ORM. Three st
 2. **Services** (`src/lib/services/`, `src/lib/planner/`, `src/lib/ai/`) — orchestration. Services take a `Db` parameter (driver-agnostic type from `src/lib/db`) so the same code runs against Neon in prod and PGlite in tests. AI functions take an injectable generator parameter defaulting to the real AI SDK call — tests pass fakes, never hit live models.
 3. **Server actions + pages** (`src/app/`) — thin wrappers: parse `FormData`, call a service with `getDb()`, `revalidatePath`. No business logic here. UI is server components with plain forms; client JS is avoided.
 
-AI calls use AI SDK v6 `generateObject` with Zod schemas through AI Gateway plain model strings (default `anthropic/claude-haiku-4.5`, override with `AI_MODEL`). Every AI recipe is validated in code (kcal ≈ 4·protein + 4·carbs + 9·fat ±15%, allergy re-screen, equipment re-screen) and regenerated once on failure, with the reason logged via `src/lib/log.ts`; AI being down must never block planning — fall back to favourites-only and surface a notice. Equipment tags outside the `CAPABILITIES` vocabulary are stripped rather than rejected. Cuisines come from `src/lib/planner/cuisines.ts`, which never yields a placeholder — the planner must never ask the model for "any cuisine".
+AI calls use AI SDK v6 `generateObject` with Zod schemas through AI Gateway plain model strings (default `google/gemini-2.5-flash-lite`, override with `AI_MODEL`). Every AI recipe is validated in code (kcal ≈ 4·protein + 4·carbs + 9·fat ±15%, allergy re-screen, equipment re-screen) and regenerated once on failure, with the reason logged via `src/lib/log.ts`; AI being down must never block planning — fall back to favourites-only and surface a notice. Equipment tags outside the `CAPABILITIES` vocabulary are stripped rather than rejected. Cuisines come from `src/lib/planner/cuisines.ts`, which never yields a placeholder — the planner must never ask the model for "any cuisine".
 
 ## Conventions
 
